@@ -10,7 +10,7 @@ bun add @citadelfoundation/kit
 
 ## Status
 
-Coming soon. Join the waitlist at [hishowa.com](https://hishowa.com).
+Coming soon. Learn more at [citadel.foundation](https://citadel.foundation).
 
 ## License
 
