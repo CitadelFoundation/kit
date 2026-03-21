@@ -26,6 +26,12 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Upgrade npm
+        run: npm install -g npm@^11.5.1
+
+      - name: Show npm version
+        run: npm --version
+
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
