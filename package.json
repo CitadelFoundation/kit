@@ -1,6 +1,6 @@
 {
   "name": "@citadelfoundation/kit",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "The sovereign SDK. Cryptographic identity, offline data, zero-trust access.",
   "type": "module",
   "main": "./src/index.js",
