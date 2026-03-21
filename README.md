@@ -14,4 +14,4 @@ Coming soon. Join the waitlist at [hishowa.com](https://hishowa.com).
 
 ## License
 
-MIT
+TBD

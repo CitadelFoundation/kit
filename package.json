@@ -1,0 +1,25 @@
+{
+  "name": "@citadelfoundation/kit",
+  "version": "0.0.1",
+  "description": "The sovereign SDK. Cryptographic identity, offline data, zero-trust access.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "scripts": {
+    "build": "echo 'Coming soon'",
+    "test": "echo 'Coming soon'"
+  },
+  "keywords": [
+    "sdk",
+    "identity",
+    "cryptography",
+    "zero-trust",
+    "offline",
+    "sovereign"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CitadelFoundation/kit"
+  },
+  "license": "TBD"
+}
