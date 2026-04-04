@@ -36,9 +36,6 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Upgrade npm
-        run: npm install -g npm@^11.5.1
-
       - name: Verify existing package
         run: npm view @citadelfoundation/kit-publishing version
 
