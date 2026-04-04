@@ -1,0 +1,57 @@
+name: Publish Kit Publishing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout distribution repo
+        uses: actions/checkout@v4
+
+      - name: Guard release branch
+        shell: bash
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            release/kit-publishing-*)
+              ;;
+            *)
+              echo "::error::Publishing is restricted to release/kit-publishing-* branches."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm
+        run: npm install -g npm@^11.5.1
+
+      - name: Verify existing package
+        run: npm view @citadelfoundation/kit-publishing version
+
+      - name: Verify public distribution tree
+        shell: bash
+        run: |
+          test -f README.md
+          test -f docs/release-workflow.md
+          test -f packages/publishing/package.json
+          test -f packages/publishing/README.md
+          test -f packages/publishing/dist/index.js
+          test -f packages/publishing/dist/index.d.ts
+
+      - name: Publish package
+        working-directory: packages/publishing
+        run: npm publish --access public
