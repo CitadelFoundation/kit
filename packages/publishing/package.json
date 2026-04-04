@@ -57,8 +57,7 @@
     "studio:dev": "bun run src/studio/host/cli.ts",
     "storybook": "storybook dev -p 6106 --config-dir storybook/.storybook",
     "build-storybook": "storybook build --config-dir storybook/.storybook",
-    "lint": "tsc --noEmit -p tsconfig.build.json",
-    "prepublishOnly": "node ../../scripts/publish_guard.mjs"
+    "lint": "tsc --noEmit -p tsconfig.build.json"
   },
   "dependencies": {
     "@tiptap/core": "^3.4.2",
