@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout distribution repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Guard release branch
         shell: bash
@@ -31,16 +31,16 @@ jobs:
           esac
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Upgrade npm
-        run: npm install -g npm@^11.5.1
-
-      - name: Show npm version
-        run: npm --version
+      - name: Verify npm 11 toolchain
+        shell: bash
+        run: |
+          npm --version
+          npm --version | grep -E '^11(\.|$)'
 
       - name: Verify existing package
         run: npm view @citadelfoundation/kit-publishing version
