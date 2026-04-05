@@ -68,7 +68,7 @@ After `@citadelfoundation/kit-publishing` exists on npm, later releases use the 
 3. promote generated artifacts to `CitadelFoundation/kit` on `release/kit-publishing-*`
 4. run the generated public-repo `publish-kit-publishing.yml` workflow
 
-The steady-state workflow uses npm trusted publishing through GitHub OIDC and must remain registered with npm for `@citadelfoundation/kit-publishing` on `CitadelFoundation/kit`. Local publish remains blocked by `scripts/publish_guard.mjs` outside the one-time bootstrap command above.
+The steady-state workflow upgrades the public GitHub Actions runner to `npm@^11.5.1`, logs `npm --version`, and then uses npm trusted publishing through GitHub OIDC. It must remain registered with npm for `@citadelfoundation/kit-publishing` on `CitadelFoundation/kit`. Local publish remains blocked by `scripts/publish_guard.mjs` outside the one-time bootstrap command above.
 
 ## Storybook
 

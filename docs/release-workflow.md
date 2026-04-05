@@ -11,6 +11,7 @@ This repository contains generated public release artifacts only.
 ## Publishing
 
 Publishing is performed from `release/kit-publishing-*` branches through the generated GitHub Actions workflow at `.github/workflows/publish-kit-publishing.yml`.
+That workflow upgrades the runner to `npm@^11.5.1` and logs `npm --version` before any publish-path npm command so npm trusted publishing runs with an OIDC-capable CLI.
 
 The trusted-publishing relationship must remain attached to:
 
