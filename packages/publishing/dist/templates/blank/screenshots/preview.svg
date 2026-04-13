@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="blank-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7efe6"/>
+      <stop offset="100%" stop-color="#e7efe8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#blank-bg)"/>
+  <rect x="72" y="80" width="1056" height="470" rx="28" fill="#ffffff" opacity="0.9"/>
+  <text x="120" y="180" fill="#2d3228" font-family="Georgia, 'Times New Roman', serif" font-size="30">Blank</text>
+  <text x="120" y="250" fill="#2d3228" font-family="Georgia, 'Times New Roman', serif" font-size="64">Start with the publishing model,</text>
+  <text x="120" y="325" fill="#2d3228" font-family="Georgia, 'Times New Roman', serif" font-size="64">add your own voice.</text>
+  <rect x="120" y="386" width="216" height="44" rx="22" fill="#2d3228"/>
+  <text x="228" y="414" text-anchor="middle" fill="#f7efe6" font-family="ui-monospace, monospace" font-size="16">bunx ... create</text>
+</svg>

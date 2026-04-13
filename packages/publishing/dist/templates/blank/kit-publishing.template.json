@@ -1,0 +1,9 @@
+{
+  "id": "blank",
+  "label": "Blank",
+  "summary": "A minimal publishing site with a clean homepage and room to grow.",
+  "audience": "Developers who want the local studio and content model without preloaded docs or editorial content.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.2"
+}

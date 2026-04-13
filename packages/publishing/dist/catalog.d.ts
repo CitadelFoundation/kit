@@ -1,0 +1,64 @@
+/**
+ * Built-in template catalog for @citadelfoundation/kit-publishing.
+ *
+ * @module @citadelfoundation/kit-publishing/catalog
+ */
+export type { PublicationWorkspaceConfig, PublishingBuiltInTemplateDeployCta, PublishingBuiltInTemplateCatalogEntry, PublishingBuiltInTemplateManifest, PublishingBuiltInTemplateId, PublishingDeployPreset, PublishingStarterCatalogEntry, PublishingStarterManifest, } from "./types/starter-catalog.js";
+export { SUPPORTED_PUBLISHING_DEPLOY_PRESETS } from "./types/starter-catalog.js";
+import { BUILT_IN_TEMPLATE_CATALOG } from "./generated/built_in_template_catalog.generated.js";
+export { BUILT_IN_TEMPLATE_CATALOG };
+export declare const ALPHA_STARTER_CATALOG: readonly [{
+    readonly manifest: {
+        readonly id: "blank";
+        readonly label: "Blank";
+        readonly summary: "A minimal publishing site with a clean homepage and room to grow.";
+        readonly audience: "Developers who want the local studio and content model without preloaded docs or editorial content.";
+        readonly screenshot: "screenshots/preview.svg";
+        readonly supportedDeployPresets: readonly ["none", "cloudflare-pages"];
+        readonly kitPublishingVersion: "0.1.2";
+    };
+    readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template blank";
+    readonly runCommand: "cd my-site && bun install && bun run studio:dev";
+    readonly deployCtas: readonly [{
+        readonly preset: "cloudflare-pages";
+        readonly label: "Deploy to Cloudflare Pages";
+        readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template blank --deploy cloudflare-pages";
+    }];
+    readonly screenshotDataUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYzMCIgdmlld0JveD0iMCAwIDEyMDAgNjMwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmxhbmstYmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZjdlZmU2Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2U3ZWZlOCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjMwIiBmaWxsPSJ1cmwoI2JsYW5rLWJnKSIvPgogIDxyZWN0IHg9IjcyIiB5PSI4MCIgd2lkdGg9IjEwNTYiIGhlaWdodD0iNDcwIiByeD0iMjgiIGZpbGw9IiNmZmZmZmYiIG9wYWNpdHk9IjAuOSIvPgogIDx0ZXh0IHg9IjEyMCIgeT0iMTgwIiBmaWxsPSIjMmQzMjI4IiBmb250LWZhbWlseT0iR2VvcmdpYSwgJ1RpbWVzIE5ldyBSb21hbicsIHNlcmlmIiBmb250LXNpemU9IjMwIj5CbGFuazwvdGV4dD4KICA8dGV4dCB4PSIxMjAiIHk9IjI1MCIgZmlsbD0iIzJkMzIyOCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC1zaXplPSI2NCI+U3RhcnQgd2l0aCB0aGUgcHVibGlzaGluZyBtb2RlbCw8L3RleHQ+CiAgPHRleHQgeD0iMTIwIiB5PSIzMjUiIGZpbGw9IiMyZDMyMjgiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCAnVGltZXMgTmV3IFJvbWFuJywgc2VyaWYiIGZvbnQtc2l6ZT0iNjQiPmFkZCB5b3VyIG93biB2b2ljZS48L3RleHQ+CiAgPHJlY3QgeD0iMTIwIiB5PSIzODYiIHdpZHRoPSIyMTYiIGhlaWdodD0iNDQiIHJ4PSIyMiIgZmlsbD0iIzJkMzIyOCIvPgogIDx0ZXh0IHg9IjIyOCIgeT0iNDE0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZjdlZmU2IiBmb250LWZhbWlseT0idWktbW9ub3NwYWNlLCBtb25vc3BhY2UiIGZvbnQtc2l6ZT0iMTYiPmJ1bnggLi4uIGNyZWF0ZTwvdGV4dD4KPC9zdmc+Cg==";
+}, {
+    readonly manifest: {
+        readonly id: "starter";
+        readonly label: "Starter";
+        readonly summary: "A balanced publishing site with one docs section, one post, and the same local-first workflow.";
+        readonly audience: "Teams who want a ready-to-run site structure without heavy editorial styling.";
+        readonly screenshot: "screenshots/preview.svg";
+        readonly supportedDeployPresets: readonly ["none", "cloudflare-pages"];
+        readonly kitPublishingVersion: "0.1.2";
+    };
+    readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template starter";
+    readonly runCommand: "cd my-site && bun install && bun run studio:dev";
+    readonly deployCtas: readonly [{
+        readonly preset: "cloudflare-pages";
+        readonly label: "Deploy to Cloudflare Pages";
+        readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template starter --deploy cloudflare-pages";
+    }];
+    readonly screenshotDataUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYzMCIgdmlld0JveD0iMCAwIDEyMDAgNjMwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ic3RhcnRlci1iZyIgeDE9IjAlIiB5MT0iMCUiIHgyPSIxMDAlIiB5Mj0iMTAwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNlOGYxZWYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjZjVlYWQ4Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MzAiIGZpbGw9InVybCgjc3RhcnRlci1iZykiLz4KICA8cmVjdCB4PSI3MiIgeT0iODAiIHdpZHRoPSIxMDU2IiBoZWlnaHQ9IjQ3MCIgcng9IjI4IiBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjkiLz4KICA8dGV4dCB4PSIxMjAiIHk9IjE4MCIgZmlsbD0iIzJkMzIyOCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC1zaXplPSIzMCI+U3RhcnRlcjwvdGV4dD4KICA8dGV4dCB4PSIxMjAiIHk9IjI1MCIgZmlsbD0iIzJkMzIyOCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC1zaXplPSI2NCI+U2hpcCB0aGUgZnVsbCByb3V0ZSBzaGFwZSw8L3RleHQ+CiAgPHRleHQgeD0iMTIwIiB5PSIzMjUiIGZpbGw9IiMyZDMyMjgiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCAnVGltZXMgTmV3IFJvbWFuJywgc2VyaWYiIGZvbnQtc2l6ZT0iNjQiPnRoZW4gdHVuZSB0aGUgY29udGVudC48L3RleHQ+CiAgPHJlY3QgeD0iMTIwIiB5PSIzODYiIHdpZHRoPSIyNDgiIGhlaWdodD0iNDQiIHJ4PSIyMiIgZmlsbD0iIzJkMzIyOCIvPgogIDx0ZXh0IHg9IjI0NCIgeT0iNDE0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZjdmMmVhIiBmb250LWZhbWlseT0idWktbW9ub3NwYWNlLCBtb25vc3BhY2UiIGZvbnQtc2l6ZT0iMTYiPmRvY3MgKyBibG9nIGluY2x1ZGVkPC90ZXh0Pgo8L3N2Zz4K";
+}, {
+    readonly manifest: {
+        readonly id: "publication";
+        readonly label: "Publication";
+        readonly summary: "A more opinionated editorial template with a richer homepage, multiple docs pages, and a seeded blog.";
+        readonly audience: "Teams who want a polished publication shape with stronger editorial defaults from day one.";
+        readonly screenshot: "screenshots/preview.svg";
+        readonly supportedDeployPresets: readonly ["none", "cloudflare-pages"];
+        readonly kitPublishingVersion: "0.1.2";
+    };
+    readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template publication";
+    readonly runCommand: "cd my-site && bun install && bun run studio:dev";
+    readonly deployCtas: readonly [{
+        readonly preset: "cloudflare-pages";
+        readonly label: "Deploy to Cloudflare Pages";
+        readonly createCommand: "bunx @citadelfoundation/kit-publishing create my-site --template publication --deploy cloudflare-pages";
+    }];
+    readonly screenshotDataUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjYzMCIgdmlld0JveD0iMCAwIDEyMDAgNjMwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icHVibGljYXRpb24tYmciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZjBlN2RkIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2RjZTlmMCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjMwIiBmaWxsPSJ1cmwoI3B1YmxpY2F0aW9uLWJnKSIvPgogIDxyZWN0IHg9IjcyIiB5PSI4MCIgd2lkdGg9IjEwNTYiIGhlaWdodD0iNDcwIiByeD0iMjgiIGZpbGw9IiNmZmZmZmYiIG9wYWNpdHk9IjAuOSIvPgogIDx0ZXh0IHg9IjEyMCIgeT0iMTgwIiBmaWxsPSIjMmQzMjI4IiBmb250LWZhbWlseT0iR2VvcmdpYSwgJ1RpbWVzIE5ldyBSb21hbicsIHNlcmlmIiBmb250LXNpemU9IjMwIj5QdWJsaWNhdGlvbjwvdGV4dD4KICA8dGV4dCB4PSIxMjAiIHk9IjI1MCIgZmlsbD0iIzJkMzIyOCIgZm9udC1mYW1pbHk9Ikdlb3JnaWEsICdUaW1lcyBOZXcgUm9tYW4nLCBzZXJpZiIgZm9udC1zaXplPSI2NCI+TGVhZCB3aXRoIG5hcnJhdGl2ZSwgZG9jcyw8L3RleHQ+CiAgPHRleHQgeD0iMTIwIiB5PSIzMjUiIGZpbGw9IiMyZDMyMjgiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCAnVGltZXMgTmV3IFJvbWFuJywgc2VyaWYiIGZvbnQtc2l6ZT0iNjQiPmFuZCBhIHJlYWR5IGVkaXRvcmlhbCBzdXJmYWNlLjwvdGV4dD4KICA8cmVjdCB4PSIxMjAiIHk9IjM4NiIgd2lkdGg9IjI4MCIgaGVpZ2h0PSI0NCIgcng9IjIyIiBmaWxsPSIjMmQzMjI4Ii8+CiAgPHRleHQgeD0iMjYwIiB5PSI0MTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmN2YyZWEiIGZvbnQtZmFtaWx5PSJ1aS1tb25vc3BhY2UsIG1vbm9zcGFjZSIgZm9udC1zaXplPSIxNiI+cHVibGljYXRpb24gc3RhcnRlcjwvdGV4dD4KPC9zdmc+Cg==";
+}];

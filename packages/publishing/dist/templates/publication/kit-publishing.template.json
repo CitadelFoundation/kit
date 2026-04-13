@@ -1,0 +1,9 @@
+{
+  "id": "publication",
+  "label": "Publication",
+  "summary": "A more opinionated editorial template with a richer homepage, multiple docs pages, and a seeded blog.",
+  "audience": "Teams who want a polished publication shape with stronger editorial defaults from day one.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.2"
+}

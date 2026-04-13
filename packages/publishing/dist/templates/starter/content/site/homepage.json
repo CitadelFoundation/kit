@@ -1,0 +1,65 @@
+{
+  "kind": "homepage",
+  "heroEyebrow": "Starter publishing site",
+  "heroTitle": "Launch {{siteTitle}} with the core routes already in motion.",
+  "heroBody": "This starter template includes a homepage, one docs path, and a sample post so the content model is visible from the first run.",
+  "heroMetrics": [
+    {
+      "label": "Runtime",
+      "value": "Astro + Bun"
+    },
+    {
+      "label": "Docs",
+      "value": "One section"
+    },
+    {
+      "label": "Editorial",
+      "value": "One sample post"
+    }
+  ],
+  "primaryCta": {
+    "label": "Open docs",
+    "href": "/docs"
+  },
+  "secondaryCta": {
+    "label": "Read the sample post",
+    "href": "/blog"
+  },
+  "featureBlocks": [
+    {
+      "eyebrow": "Starter shape",
+      "title": "A runnable publishing stack with just enough content to orient the team.",
+      "body": "Use the included docs page and blog post as reference points, then replace the copy with your own publication workflow.",
+      "bullets": [
+        "Homepage, docs, and blog routes",
+        "Starter content in canonical directories",
+        "Local studio host from the same workspace"
+      ]
+    },
+    {
+      "eyebrow": "Deploy preset",
+      "title": "Cloudflare Pages is optional, not mandatory.",
+      "body": "The generated site stays local-first, with an opt-in preset for Cloudflare Pages when you want static deployment scaffolding.",
+      "bullets": [
+        "No hosted control plane",
+        "Normal Astro build output",
+        "Preset files added only when requested"
+      ]
+    }
+  ],
+  "ctaBlocks": [
+    {
+      "tone": "accent",
+      "title": "Replace the starter content, keep the workflow.",
+      "body": "The sample docs and post are there to show the route and content shape, not to lock you into a theme.",
+      "link": {
+        "label": "Open docs",
+        "href": "/docs"
+      }
+    }
+  ],
+  "seo": {
+    "title": "{{siteTitle}}",
+    "description": "A starter publishing site for {{siteTitle}} with docs, blog, and local studio workflows."
+  }
+}

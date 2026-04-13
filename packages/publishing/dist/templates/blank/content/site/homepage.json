@@ -1,0 +1,55 @@
+{
+  "kind": "homepage",
+  "heroEyebrow": "Local-first publishing",
+  "heroTitle": "Start {{siteTitle}} with the studio and shape the rest yourself.",
+  "heroBody": "This blank template gives you a live homepage, docs route, blog route, and publishing workspace without forcing an editorial structure on day one.",
+  "heroMetrics": [
+    {
+      "label": "Runtime",
+      "value": "Astro + Bun"
+    },
+    {
+      "label": "Workflow",
+      "value": "Git-native"
+    },
+    {
+      "label": "Deploy",
+      "value": "Cloudflare ready"
+    }
+  ],
+  "primaryCta": {
+    "label": "Open docs",
+    "href": "/docs"
+  },
+  "secondaryCta": {
+    "label": "Browse posts",
+    "href": "/blog"
+  },
+  "featureBlocks": [
+    {
+      "eyebrow": "Template shape",
+      "title": "A working site before you add the first page.",
+      "body": "The routes, content loader, and studio entrypoint are already in place so you can focus on the site shape you want to publish.",
+      "bullets": [
+        "Homepage, docs, and blog routes",
+        "Canonical content directories",
+        "Local studio host from the same workspace"
+      ]
+    }
+  ],
+  "ctaBlocks": [
+    {
+      "tone": "accent",
+      "title": "Start with your own copy.",
+      "body": "Use the create command, then add docs pages and posts as your site grows.",
+      "link": {
+        "label": "View docs",
+        "href": "/docs"
+      }
+    }
+  ],
+  "seo": {
+    "title": "{{siteTitle}}",
+    "description": "A local-first publishing site for {{siteTitle}}."
+  }
+}

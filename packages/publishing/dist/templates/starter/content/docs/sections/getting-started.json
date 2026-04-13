@@ -1,0 +1,8 @@
+{
+  "kind": "doc_section",
+  "id": "getting-started",
+  "title": "Getting Started",
+  "slug": "getting-started",
+  "description": "The shortest path from a fresh install to a working publishing site.",
+  "order": 1
+}

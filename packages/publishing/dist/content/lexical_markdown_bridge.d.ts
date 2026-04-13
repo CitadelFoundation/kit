@@ -1,0 +1,18 @@
+import { type ElementTransformer, type Transformer } from "@lexical/markdown";
+import { ParagraphNode, TextNode, type LexicalEditor, type SerializedEditorState, type ElementNode, type LexicalNode } from "lexical";
+import { CodeHighlightNode, CodeNode } from "@lexical/code";
+import { AutoLinkNode, LinkNode } from "@lexical/link";
+import { ListItemNode, ListNode } from "@lexical/list";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { DividerCardNode } from "../studio/components/lexical/cards/divider-card.js";
+import { ImageCardNode } from "../studio/components/lexical/cards/image-card.js";
+export declare const publishingLexicalNodes: readonly [typeof ParagraphNode, typeof TextNode, typeof HeadingNode, typeof QuoteNode, typeof ListNode, typeof ListItemNode, typeof LinkNode, typeof AutoLinkNode, typeof CodeNode, typeof CodeHighlightNode, typeof DividerCardNode, typeof ImageCardNode];
+export declare const DIVIDER_TRANSFORMER: ElementTransformer;
+export declare const IMAGE_TRANSFORMER: ElementTransformer;
+export declare const publishingMarkdownTransformers: readonly Transformer[];
+export declare function importPublishingMarkdown(markdown: string): void;
+export declare function serializePublishingMarkdown(node?: ElementNode, shouldPreserveNewLines?: boolean): string;
+export declare function createPublishingHeadlessEditor(namespace: string): LexicalEditor;
+export declare function convertMarkdownBodyToPublishingLexicalState(body: string, namespace?: string): SerializedEditorState;
+export declare function serializePublishingLexicalJson(editorState: SerializedEditorState, pretty?: boolean): string;
+export declare function isPublishingBridgeNode(node: LexicalNode): boolean;

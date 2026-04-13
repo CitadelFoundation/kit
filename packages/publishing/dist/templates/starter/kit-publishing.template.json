@@ -1,0 +1,9 @@
+{
+  "id": "starter",
+  "label": "Starter",
+  "summary": "A balanced publishing site with one docs section, one post, and the same local-first workflow.",
+  "audience": "Teams who want a ready-to-run site structure without heavy editorial styling.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.2"
+}
