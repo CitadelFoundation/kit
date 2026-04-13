@@ -56,9 +56,9 @@ jobs:
           test -f packages/publishing/dist/catalog.js
           test -f packages/publishing/dist/index.js
           test -f packages/publishing/dist/index.d.ts
-          test -f packages/publishing/templates/blank/kit-publishing.template.json
-          test -f packages/publishing/templates/starter/kit-publishing.template.json
-          test -f packages/publishing/templates/publication/kit-publishing.template.json
+          test -f packages/publishing/dist/templates/blank/kit-publishing.template.json
+          test -f packages/publishing/dist/templates/starter/kit-publishing.template.json
+          test -f packages/publishing/dist/templates/publication/kit-publishing.template.json
 
       - name: Publish package
         working-directory: packages/publishing
