@@ -13,14 +13,18 @@ import { css, html } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { customElement, property, query, state } from "lit/decorators.js";
+import "@citadelfoundation/kit-ui/components/tabs";
 import { DEFAULT_PUBLISHING_STUDIO_POSTS_BUCKET, publishingStudioPostsBucketForEntry, } from "../browse_state.js";
-import { createSignal, } from "../../internal/signal.js";
-import { PublishingElement, publishingTheme, } from "../../internal/ui.js";
-import { KitPublishingEditorSurface, } from "./publishing_editor_surface.js";
-import { createPublishingTiptapEditorAdapter, } from "../editor_adapter.js";
+import { createSignal } from "../../internal/signal.js";
+import { PublishingElement, publishingTheme } from "../../internal/ui.js";
+import { KitPublishingEditorSurface } from "./publishing_editor_surface.js";
+import { KitPublishingContentList, } from "./content/content-list.js";
+import { createMarkdownEditorAdapter, } from "../editor_adapter.js";
+import { resolvePublishingStudioAssetPreviewPath } from "../host/model.js";
 import { createPublishingStudioMachine, eventForWorkflowState, } from "../machines/studio_machine.js";
 import { createPublicationSession, createPublicationWorkspace, hasPublicationCapability, } from "../../workspace.js";
 void KitPublishingEditorSurface;
+void KitPublishingContentList;
 const DEFAULT_PUBLICATION_LICENSE_SESSION = {
     enabled: false,
     mode: "disabled",
@@ -39,6 +43,11 @@ const DEFAULT_TRANSIENT_FEEDBACK_DURATION_MS = {
     warning: 2500,
     error: 3200,
 };
+const PUBLISHING_STUDIO_POST_BUCKETS = [
+    "draft",
+    "published",
+    "scheduled",
+];
 let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     constructor() {
         super(...arguments);
@@ -67,7 +76,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         this.documentSeoDescription = "";
         this.documentSectionId = "";
         this.selectedRoute = "/";
-        this.editorAdapter = createPublishingTiptapEditorAdapter();
+        this.editorAdapter = createMarkdownEditorAdapter();
+        this.editorKind = "lexical";
         this.editorInsertPaletteOpen = false;
         this.contentValue = "";
         this.previewHtml = "";
@@ -87,6 +97,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         this.session = null;
         this.editorContent = createSignal("");
         this.draftDirty = createSignal(false);
+        this.editorExternalSyncGeneration = 1;
         this.machineState = createSignal("idle");
         this.entryFilter = createSignal("");
         this.searchOverlayQuery = "";
@@ -111,12 +122,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         this.machine = null;
         this.suppressReactiveRequest = false;
         this.handleGlobalPointerDown = (event) => {
-            if (!this.accountPopoverOpen) {
-                return;
-            }
             const path = event.composedPath();
-            if (!path.includes(this)) {
+            if (this.accountPopoverOpen && !path.includes(this)) {
                 this.accountPopoverOpen = false;
+            }
+            if (this.featureMediaPickerOpen &&
+                !path.includes(this.featureMediaEntry ?? this)) {
+                this.featureMediaPickerOpen = false;
             }
         };
         this.handleGlobalKeyDown = (event) => {
@@ -134,10 +146,42 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 this.closeSearchOverlay();
                 return;
             }
+            if (event.key === "Escape" && this.featureMediaPickerOpen) {
+                event.preventDefault();
+                this.featureMediaPickerOpen = false;
+                return;
+            }
+            if (event.key === "Escape" &&
+                (this.workspacePanelOpen || this.metadataPanelOpen)) {
+                event.preventDefault();
+                this.closeInspectorPanels();
+                return;
+            }
             if (event.key === "Escape" && this.transientFeedback) {
                 event.preventDefault();
                 this.clearTransientFeedback();
             }
+        };
+        this.toggleWorkspacePanel = () => {
+            const next = !this.workspacePanelOpen;
+            this.workspacePanelOpen = next;
+            if (next) {
+                this.metadataPanelOpen = false;
+            }
+        };
+        this.toggleMetadataPanel = () => {
+            const next = !this.metadataPanelOpen;
+            this.metadataPanelOpen = next;
+            if (next) {
+                this.workspacePanelOpen = false;
+            }
+        };
+        this.closeInspectorPanels = () => {
+            this.workspacePanelOpen = false;
+            this.metadataPanelOpen = false;
+        };
+        this.toggleFeatureMediaPicker = () => {
+            this.featureMediaPickerOpen = !this.featureMediaPickerOpen;
         };
         this.handlePublishingTagSaved = (event) => {
             const detail = event.detail;
@@ -165,6 +209,15 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         };
         this.unsubscribers = [];
         this.handleEditorChange = (event) => {
+            if (event.detail.origin === "external-sync") {
+                if (event.detail.editorKind !== "lexical" ||
+                    event.detail.syncGeneration !== this.editorExternalSyncGeneration) {
+                    return;
+                }
+                this.editorContent.value = event.detail.value;
+                this.draftDirty.value = false;
+                return;
+            }
             if (!this.canWriteCurrentRoute()) {
                 this.reportCapabilityBlock(this.currentWriteBlockMessage());
                 return;
@@ -192,6 +245,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         };
         this.handleCanvasTitleKeydown = (event) => {
             if (!this.canWriteCurrentRoute()) {
+                return;
+            }
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+                event.preventDefault();
+                const target = event.currentTarget;
+                target?.select();
                 return;
             }
             if (event.key !== "Enter" && event.key !== "ArrowDown") {
@@ -420,7 +479,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             const existingSlugs = new Set(mergePublishingTagRecords(summarizePublishingTags(this.entries), this.tags)
                 .filter((record) => record.id !== current.id)
                 .map((record) => record.slug));
-            const nextSlug = ensureUniqueTagSlug(current.slug.trim().length > 0 ? current.slug : slugForTagLabel(normalizedLabel), existingSlugs);
+            const nextSlug = ensureUniqueTagSlug(current.slug.trim().length > 0
+                ? current.slug
+                : slugForTagLabel(normalizedLabel), existingSlugs);
             const sourceSlug = (current.sourceSlug ?? current.slug) || nextSlug;
             const nextRecord = {
                 ...current,
@@ -534,6 +595,30 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     ? "Create new post requested."
                     : "Create new page requested.";
         };
+        this.handlePostBucketTabChange = (event) => {
+            const bucket = PUBLISHING_STUDIO_POST_BUCKETS[event.detail.currentIndex];
+            if (!bucket) {
+                return;
+            }
+            this.openBrowseSurface("posts", bucket);
+        };
+    }
+    async getUpdateComplete() {
+        const result = await super.getUpdateComplete();
+        await Promise.resolve();
+        const contentList = this.shadowRoot?.querySelector("kit-publishing-content-list");
+        if (contentList?.updateComplete) {
+            await contentList.updateComplete;
+        }
+        const contentTable = contentList?.shadowRoot?.querySelector("kit-table");
+        if (contentTable?.updateComplete) {
+            await contentTable.updateComplete;
+        }
+        const bucketTabs = this.shadowRoot?.querySelector("kit-tabs");
+        if (bucketTabs?.updateComplete) {
+            await bucketTabs.updateComplete;
+        }
+        return result;
     }
     static { this.styles = [
         PublishingElement.baseSystemStyles,
@@ -554,6 +639,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         --kit-text-secondary: #a4afc1;
         --kit-border-primary: #303641;
         --kit-color-primary: #e5e7eb;
+        --kit-editorial-chrome-surface: rgba(21, 23, 26, 0.92);
+        --kit-editorial-chrome-border: rgba(255, 255, 255, 0.08);
+        --kit-editorial-muted-text: rgba(164, 175, 193, 0.92);
+        --kit-editorial-hover-surface: rgba(255, 255, 255, 0.05);
         background: #15171a;
       }
 
@@ -598,8 +687,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         max-width: min(30rem, 100%);
         padding: 0.55rem 0.8rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 96%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 96%,
+          transparent
+        );
         box-shadow: var(--kit-shadow-sm);
         font-size: var(--kit-font-size-sm);
         line-height: 1.35;
@@ -608,22 +702,38 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .transient-feedback[data-tone="success"] {
         border-color: color-mix(in srgb, #16a34a 28%, transparent);
-        background: color-mix(in srgb, #16a34a 12%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #16a34a 12%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .transient-feedback[data-tone="info"] {
         border-color: color-mix(in srgb, #0f766e 26%, transparent);
-        background: color-mix(in srgb, #0f766e 10%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #0f766e 10%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .transient-feedback[data-tone="warning"] {
         border-color: color-mix(in srgb, #d97706 26%, transparent);
-        background: color-mix(in srgb, #d97706 10%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #d97706 10%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .transient-feedback[data-tone="error"] {
         border-color: color-mix(in srgb, #dc2626 28%, transparent);
-        background: color-mix(in srgb, #dc2626 12%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #dc2626 12%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .transient-feedback-message {
@@ -631,7 +741,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       }
 
       .inspector-stack {
-        width: 23.25rem;
+        width: min(21rem, 100%);
         max-width: 100%;
         align-self: stretch;
       }
@@ -641,7 +751,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       }
 
       .main-panel[data-write-mode="true"] .inspector-stack {
-        margin-top: -3rem;
+        position: sticky;
+        top: 1.5rem;
+        margin-top: 0;
+        padding-top: 1.1rem;
       }
 
       .sidebar-panel {
@@ -667,8 +780,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         gap: 1.25rem;
         height: 100vh;
         padding: 1.1rem 0.95rem 0.95rem;
-        border-right: 1px solid color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-primary) 97%, #ffffff 3%);
+        border-right: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 97%,
+          #ffffff 3%
+        );
         overflow: hidden;
       }
 
@@ -758,7 +876,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .dock-avatar-button:hover,
       .theme-toggle:hover,
       .account-popover-button:hover {
-        background: color-mix(in srgb, var(--kit-surface-secondary) 88%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 88%,
+          transparent
+        );
         color: var(--kit-text-primary);
       }
 
@@ -1010,7 +1132,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         padding: 0;
         border: 1px solid #e6e8eb;
         border-radius: 0.85rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 99%, #ffffff 1%);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 99%,
+          #ffffff 1%
+        );
         box-shadow: 0 16px 34px rgb(15 23 42 / 0.14);
         overflow: hidden;
       }
@@ -1097,9 +1223,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .search-overlay-dialog {
         width: min(34.5rem, calc(100vw - 3rem));
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         border-radius: 1rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 99%, #ffffff 1%);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 99%,
+          #ffffff 1%
+        );
         box-shadow: 0 22px 60px rgb(15 23 42 / 0.24);
         overflow: hidden;
       }
@@ -1110,7 +1241,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         gap: 0.5rem;
         min-height: 3.85rem;
         padding: 0 0.8rem;
-        border-bottom: 1px solid color-mix(in srgb, var(--kit-border-primary) 76%, transparent);
+        border-bottom: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 76%, transparent);
       }
 
       .search-overlay-icon {
@@ -1174,7 +1306,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .search-overlay-item:hover,
       .search-overlay-item:focus-visible {
         outline: 0;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 92%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 92%,
+          transparent
+        );
       }
 
       .search-overlay-copy {
@@ -1202,7 +1338,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         min-height: 1.65rem;
         padding: 0 0.55rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         color: var(--kit-text-secondary);
         font-size: 0.74rem;
         font-weight: 600;
@@ -1278,8 +1415,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .filter-chip,
       .settings-card {
         appearance: none;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-primary) 95%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 95%,
+          transparent
+        );
         color: inherit;
         font: inherit;
       }
@@ -1305,6 +1447,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: flex;
         flex-wrap: wrap;
         gap: 1rem;
+      }
+
+      .collection-bucket-tabs-control {
+        display: block;
+        width: 100%;
+        margin-top: 0.25rem;
       }
 
       .filter-chip {
@@ -1349,13 +1497,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .collection-table {
         display: grid;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
       }
 
       .collection-table-head,
       .collection-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(6rem, 0.22fr) minmax(6rem, 0.22fr) auto;
+        grid-template-columns:
+          minmax(0, 1fr) minmax(6rem, 0.22fr) minmax(6rem, 0.22fr)
+          auto;
         gap: 0.75rem;
         align-items: center;
       }
@@ -1386,13 +1537,15 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         box-sizing: border-box;
         min-height: auto;
         padding: 0.75rem 0;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
         cursor: pointer;
         outline: none;
       }
 
       .collection-empty-row {
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
       }
 
       .collection-empty-state {
@@ -1424,11 +1577,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .collection-row-shell:hover,
       .collection-row-shell:focus-within {
-        background: color-mix(in srgb, var(--kit-surface-secondary) 28%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 28%,
+          transparent
+        );
       }
 
       .collection-row-shell:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--kit-brand-primary) 45%, transparent);
+        outline: 2px solid
+          color-mix(in srgb, var(--kit-brand-primary) 45%, transparent);
         outline-offset: -2px;
       }
 
@@ -1448,7 +1606,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .collection-row-meta,
       .collection-row-secondary,
-      .collection-row-age {
+      .collection-row-age,
+      .collection-row-copy {
         color: var(--kit-text-secondary);
         font-size: 0.8rem;
         line-height: 1.2;
@@ -1475,7 +1634,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         max-width: 8rem;
         padding: 0.15rem 0.45rem;
         border-radius: 999px;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 80%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 80%,
+          transparent
+        );
         color: var(--kit-text-primary);
         font-size: 0.68rem;
         font-weight: 600;
@@ -1497,7 +1660,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-border-primary) 72%,
+          transparent
+        );
         color: var(--kit-text-primary);
         font-size: 0.6rem;
         font-weight: 700;
@@ -1507,11 +1674,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .collection-row-author-avatar-image {
         display: block;
         object-fit: cover;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 72%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 72%,
+          transparent
+        );
       }
 
       .collection-row-secondary,
-      .collection-row-age {
+      .collection-row-age,
+      .collection-row-copy {
         text-align: left;
         display: flex;
         align-items: center;
@@ -1567,11 +1739,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .collection-row-action:hover,
       .collection-row-action:focus-visible {
         color: var(--kit-text-primary);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 76%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 76%,
+          transparent
+        );
       }
 
       .collection-row-action:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--kit-brand-primary) 40%, transparent);
+        outline: 2px solid
+          color-mix(in srgb, var(--kit-brand-primary) 40%, transparent);
         outline-offset: 2px;
       }
 
@@ -1601,9 +1778,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         appearance: none;
         min-height: 2rem;
         padding: 0 0.9rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         border-radius: 0.35rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 96%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 96%,
+          transparent
+        );
         color: var(--kit-text-secondary);
         font: inherit;
         font-size: 0.82rem;
@@ -1613,19 +1795,26 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .tag-surface-tab[data-active="true"] {
         color: var(--kit-text-primary);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 72%, #ffffff 28%);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 72%,
+          #ffffff 28%
+        );
       }
 
       .tag-management-table {
         display: grid;
         margin-top: 0.9rem;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
       }
 
       .tag-management-head,
       .tag-management-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(10rem, 0.42fr) minmax(8rem, 0.3fr) auto;
+        grid-template-columns:
+          minmax(0, 1fr) minmax(10rem, 0.42fr) minmax(8rem, 0.3fr)
+          auto;
         gap: 1rem;
         align-items: center;
       }
@@ -1652,7 +1841,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         box-sizing: border-box;
         min-height: auto;
         padding: 1rem 0;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
         cursor: pointer;
       }
 
@@ -1662,7 +1852,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       }
 
       .tag-management-button:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--kit-brand-primary) 40%, transparent);
+        outline: 2px solid
+          color-mix(in srgb, var(--kit-brand-primary) 40%, transparent);
         outline-offset: 3px;
       }
 
@@ -1743,9 +1934,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         box-sizing: border-box;
         min-height: 2.35rem;
         padding: 0.62rem 0.72rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: 0.3rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 98%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 98%,
+          transparent
+        );
         color: var(--kit-text-primary);
         font: inherit;
       }
@@ -1778,7 +1974,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         width: 2.5rem;
         height: 2.35rem;
         padding: 0;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: 0.3rem;
         background: transparent;
         cursor: pointer;
@@ -1788,9 +1985,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 0.75rem;
         padding: 0.9rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
         border-radius: 0.45rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 98%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 98%,
+          transparent
+        );
       }
 
       .tag-editor-preview-title {
@@ -1825,8 +2027,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         aspect-ratio: 16 / 10;
         object-fit: cover;
         border-radius: 0.45rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 92%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 92%,
+          transparent
+        );
       }
 
       .tag-editor-image-thumb {
@@ -1837,7 +2044,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 1rem;
         padding-top: 0.55rem;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 72%, transparent);
       }
 
       .dashboard-grid {
@@ -1858,8 +2066,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 0.85rem;
         padding: 1rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-primary) 96%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 96%,
+          transparent
+        );
         border-radius: 0.45rem;
       }
 
@@ -1922,7 +2135,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .dashboard-chart {
         position: relative;
         min-height: 11rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
         border-radius: 0.95rem;
         background:
           linear-gradient(
@@ -1937,7 +2151,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             transparent 0,
             transparent 19%,
             color-mix(in srgb, var(--kit-border-primary) 20%, transparent) 19%,
-            color-mix(in srgb, var(--kit-border-primary) 20%, transparent) calc(19% + 1px)
+            color-mix(in srgb, var(--kit-border-primary) 20%, transparent)
+              calc(19% + 1px)
           );
         overflow: hidden;
       }
@@ -1956,12 +2171,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         content: "";
         position: absolute;
         inset: 0;
-        background:
-          linear-gradient(
-            to top,
-            color-mix(in srgb, #38bdf8 14%, transparent) 0%,
-            transparent 42%
-          );
+        background: linear-gradient(
+          to top,
+          color-mix(in srgb, #38bdf8 14%, transparent) 0%,
+          transparent 42%
+        );
         pointer-events: none;
       }
 
@@ -2007,7 +2221,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         align-items: start;
         padding: 0.85rem 0;
         border: 0;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
         background: transparent;
         text-align: left;
         cursor: pointer;
@@ -2070,9 +2285,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         justify-content: center;
         min-height: 2.2rem;
         padding: 0 0.9rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         border-radius: 0.4rem;
-        background: color-mix(in srgb, var(--kit-surface-primary) 96%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 96%,
+          transparent
+        );
         cursor: pointer;
         font-size: var(--kit-font-size-sm);
         font-weight: 600;
@@ -2096,7 +2316,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 0;
         padding: 0.8rem 0;
-        border-bottom: 1px solid color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
+        border-bottom: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 70%, transparent);
       }
 
       .dashboard-activity-item:last-child {
@@ -2193,8 +2414,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: var(--kit-space-md);
         padding: var(--kit-space-md);
-        background: color-mix(in srgb, var(--kit-surface-primary) 92%, #94a3b8 8%);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 92%,
+          #94a3b8 8%
+        );
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         border-radius: var(--kit-radius-lg);
         box-shadow: var(--kit-shadow-sm);
       }
@@ -2264,15 +2490,24 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         gap: 0.35rem;
         padding: 0.25rem 0.6rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 90%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 90%,
+          transparent
+        );
         font-size: var(--kit-font-size-xs);
       }
 
       .status-chip[data-tone="ready"],
       .entry-badge[data-tone="published"] {
         border-color: color-mix(in srgb, #16a34a 26%, transparent);
-        background: color-mix(in srgb, #16a34a 14%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #16a34a 14%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .status-chip[data-tone="blocked"],
@@ -2284,7 +2519,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .status-chip[data-tone="error"] {
         border-color: color-mix(in srgb, #dc2626 28%, transparent);
-        background: color-mix(in srgb, #dc2626 12%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #dc2626 12%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .action-button,
@@ -2295,11 +2534,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .action-button {
         appearance: none;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         border-radius: var(--kit-radius-md);
         padding: 0.75rem 0.95rem;
         cursor: pointer;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 94%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 94%,
+          transparent
+        );
         transition:
           transform 120ms ease,
           border-color 120ms ease,
@@ -2309,8 +2553,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .action-button:hover:enabled,
       .entry-button:hover {
         transform: translateY(-1px);
-        border-color: color-mix(in srgb, var(--kit-color-primary) 35%, transparent);
-        background: color-mix(in srgb, var(--kit-color-primary) 10%, var(--kit-surface-secondary));
+        border-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 35%,
+          transparent
+        );
+        background: color-mix(
+          in srgb,
+          var(--kit-color-primary) 10%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .action-button:disabled {
@@ -2323,7 +2575,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         background: #15171a;
         border-color: #15171a;
       }
-      
+
       .action-button[data-variant="primary"]:hover:enabled {
         color: #ffffff;
         background: #2a2c30;
@@ -2332,7 +2584,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .action-button[data-variant="success"] {
         border-color: color-mix(in srgb, #16a34a 34%, transparent);
-        background: color-mix(in srgb, #16a34a 14%, var(--kit-surface-secondary));
+        background: color-mix(
+          in srgb,
+          #16a34a 14%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .action-button[data-variant="quiet"] {
@@ -2360,21 +2616,24 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .editor-canvas {
         display: grid;
-        gap: var(--kit-space-md);
-        width: min(46.25rem, 100%);
+        gap: calc(var(--kit-space-lg) + 0.25rem);
+        width: min(calc(var(--kit-editorial-measure) + 3rem), 100%);
         margin-inline: auto;
       }
 
       .canvas-header {
         display: grid;
-        gap: var(--kit-space-sm);
+        gap: calc(var(--kit-space-md) + 0.25rem);
         padding: 0;
       }
 
       .feature-media-entry {
-        display: grid;
-        gap: 0.7rem;
-        justify-items: start;
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.85rem;
+        justify-content: space-between;
       }
 
       .feature-media-button {
@@ -2382,19 +2641,37 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: inline-flex;
         align-items: center;
         gap: 0.45rem;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--kit-text-secondary);
+        padding: 0.48rem 0.78rem;
+        border: 1px solid var(--kit-editorial-muted-border);
+        border-radius: var(--kit-radius-full);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 92%,
+          transparent
+        );
+        color: color-mix(in srgb, var(--kit-text-secondary) 88%, transparent);
         font: inherit;
         font-size: var(--kit-font-size-sm);
         font-weight: 600;
         cursor: pointer;
-        transition: color 140ms ease;
+        transition:
+          color 140ms ease,
+          border-color 140ms ease,
+          background 140ms ease;
       }
 
       .feature-media-button:hover:enabled {
         color: var(--kit-text-primary);
+        border-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 16%,
+          transparent
+        );
+        background: color-mix(
+          in srgb,
+          var(--kit-color-primary) 5%,
+          var(--kit-surface-primary)
+        );
       }
 
       .feature-media-button:disabled {
@@ -2409,7 +2686,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         width: 1.1rem;
         height: 1.1rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
+        border: 1px solid var(--kit-editorial-muted-border);
         font-size: 0.9rem;
         line-height: 1;
       }
@@ -2420,26 +2697,44 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         gap: 0.7rem;
         color: var(--kit-text-secondary);
         font-size: var(--kit-font-size-sm);
+        padding: 0.34rem 0.62rem 0.34rem 0.34rem;
+        border-radius: calc(var(--kit-radius-md) + 0.18rem);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 90%,
+          transparent
+        );
+        border: 1px solid var(--kit-editorial-muted-border);
       }
 
       .feature-media-thumb {
         width: 2.75rem;
         height: 2.75rem;
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
         object-fit: cover;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 90%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 90%,
+          transparent
+        );
       }
 
       .feature-media-picker {
+        position: absolute;
+        top: calc(100% + 0.85rem);
+        left: 0;
+        z-index: 16;
         display: grid;
         gap: 0.85rem;
         width: min(22rem, 100%);
         padding: 0.9rem 1rem;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid var(--kit-editorial-muted-border);
         border-radius: var(--kit-radius-lg);
-        background: color-mix(in srgb, var(--kit-surface-primary) 98%, #ffffff 2%);
-        box-shadow: var(--kit-shadow-sm);
+        background: var(--kit-editorial-overlay-surface);
+        box-shadow: var(--kit-editorial-overlay-shadow);
+        backdrop-filter: blur(14px);
       }
 
       .feature-media-picker-actions {
@@ -2461,11 +2756,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         outline: none;
         background: transparent;
         color: var(--kit-text-primary);
-        font:
-          600
-          clamp(2.5rem, 5vw, 3rem) / 1.1
-          var(--kit-font-family-sans, Inter, system-ui, sans-serif);
-        letter-spacing: -0.02em;
+        font: 600 clamp(3rem, 6vw, 4.45rem) / 1.03
+          var(--kit-font-family-editor, Georgia, serif);
+        letter-spacing: -0.03em;
+        max-width: min(18ch, 100%);
       }
 
       .canvas-title-input::placeholder {
@@ -2487,10 +2781,17 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 0;
         min-height: 100%;
-        padding: 0.95rem 1.1rem 1.35rem;
+        padding: 1.15rem 1.2rem 1.35rem;
         box-sizing: border-box;
-        background: transparent;
-        border-left: 1px solid color-mix(in srgb, var(--kit-border-primary) 68%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 88%,
+          transparent
+        );
+        border: 1px solid var(--kit-editorial-muted-border);
+        border-radius: calc(var(--kit-radius-lg) + 0.15rem);
+        box-shadow: 0 18px 40px
+          color-mix(in srgb, var(--kit-text-primary) 8%, transparent);
       }
 
       .metadata-panel-header {
@@ -2508,7 +2809,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         display: grid;
         gap: 0.75rem;
         padding: 0.95rem 0;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 74%, transparent);
       }
 
       .metadata-panel-section:first-of-type {
@@ -2559,7 +2861,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         padding: 0.7rem 0.8rem;
         color: var(--kit-text-primary);
         background: var(--kit-surface-primary);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: var(--kit-radius-md);
         font: inherit;
       }
@@ -2576,7 +2879,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         padding: 0;
         border: 0;
         background: transparent;
-        accent-color: color-mix(in srgb, var(--kit-color-primary) 72%, #0f172a 28%);
+        accent-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 72%,
+          #0f172a 28%
+        );
       }
 
       .workspace {
@@ -2590,9 +2897,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
-        gap: var(--kit-space-md);
-        padding: 0 0 var(--kit-space-sm);
-        border-bottom: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        gap: 0.95rem 1.25rem;
+        padding: 0.55rem 0 1rem;
+        border-bottom: 1px solid var(--kit-editorial-chrome-border);
       }
 
       .write-status-bar[data-has-inspector="true"] {
@@ -2601,19 +2908,70 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
       .write-status-info {
         display: grid;
-        gap: 0.35rem;
+        gap: 0.32rem;
         min-width: 0;
+      }
+
+      .write-status-kicker {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.55rem;
+        min-width: 0;
+      }
+
+      .write-breadcrumb {
+        appearance: none;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: color-mix(in srgb, var(--kit-text-secondary) 82%, transparent);
+        font: inherit;
+        font-size: var(--kit-font-size-sm);
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .write-breadcrumb:hover {
+        color: var(--kit-text-primary);
+      }
+
+      .write-breadcrumb[data-static="true"] {
+        cursor: default;
+      }
+
+      .write-breadcrumb[data-static="true"]:hover {
+        color: color-mix(in srgb, var(--kit-text-secondary) 82%, transparent);
+      }
+
+      .write-status-separator {
+        color: color-mix(in srgb, var(--kit-text-secondary) 50%, transparent);
+      }
+
+      .write-status-route {
+        min-width: 0;
+        color: var(--kit-text-primary);
+        font-size: 0.96rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .write-status-message {
         margin: 0;
-        color: var(--kit-text-secondary);
-        font-size: var(--kit-font-size-sm);
+        color: var(--kit-editorial-muted-text);
+        font-size: var(--kit-font-size-xs);
         overflow-wrap: anywhere;
       }
 
       .write-status-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         justify-content: flex-end;
+        gap: 0.55rem;
       }
 
       .write-status-actions .action-button {
@@ -2645,7 +3003,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         min-width: 0;
       }
 
+      .ghost-editor-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
       .ghost-editor-link,
+      .ghost-editor-workspace,
       .ghost-editor-settings {
         appearance: none;
         display: inline-flex;
@@ -2675,18 +3040,64 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         color: var(--kit-text-secondary);
       }
 
-      .workspace[data-has-inspector="true"] {
-        grid-template-columns: minmax(0, 1fr) 22.75rem;
+      .ghost-editor-workspace,
+      .ghost-editor-settings {
+        padding: 0.28rem 0.56rem;
+        border-radius: var(--kit-radius-full);
+        color: var(--kit-editorial-muted-text);
+      }
+
+      .ghost-editor-workspace:hover,
+      .ghost-editor-settings:hover {
+        color: var(--kit-text-primary);
+        background: var(--kit-editorial-hover-surface);
+      }
+
+      .workspace-panel {
         gap: 0;
+      }
+
+      .workspace-panel-copy {
+        margin: 0;
+        color: var(--kit-editorial-muted-text);
+        font-size: var(--kit-font-size-sm);
+        line-height: 1.5;
+      }
+
+      .workspace-target-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .workspace-target-item {
+        display: grid;
+        gap: 0.2rem;
+        padding: 0.72rem 0.78rem;
+        border: 1px solid var(--kit-editorial-chrome-border);
+        border-radius: var(--kit-radius-md);
+        background: color-mix(
+          in srgb,
+          var(--kit-editorial-chrome-surface) 100%,
+          transparent
+        );
+      }
+
+      .workspace[data-has-inspector="true"] {
+        grid-template-columns: minmax(0, 1fr) minmax(18rem, 21rem);
+        gap: 1.75rem;
       }
 
       .editor-canvas[data-structured="false"] {
         gap: var(--kit-space-lg);
-        padding-top: 5rem;
+        padding-top: 1.5rem;
+        padding-bottom: 2rem;
       }
 
       .editor-canvas[data-structured="false"] .canvas-header {
-        gap: 0;
+        gap: 1rem;
         padding: 0;
         border: 0;
         background: transparent;
@@ -2699,14 +3110,23 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         gap: var(--kit-space-sm);
         min-height: 10rem;
         padding: var(--kit-space-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: var(--kit-radius-lg);
-        background: color-mix(in srgb, var(--kit-surface-primary) 95%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 95%,
+          transparent
+        );
         overflow: auto;
       }
 
       .preview-frame :is(h1, h2, h3) {
         margin: 0 0 var(--kit-space-sm);
+      }
+
+      .editor-column {
+        min-width: 0;
       }
 
       .preview-frame p,
@@ -2735,12 +3155,24 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         border-radius: var(--kit-radius-md);
         border: 1px solid transparent;
         cursor: pointer;
-        background: color-mix(in srgb, var(--kit-surface-secondary) 88%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 88%,
+          transparent
+        );
       }
 
       .entry-button[data-selected="true"] {
-        border-color: color-mix(in srgb, var(--kit-color-primary) 35%, transparent);
-        background: color-mix(in srgb, var(--kit-color-primary) 10%, var(--kit-surface-secondary));
+        border-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 35%,
+          transparent
+        );
+        background: color-mix(
+          in srgb,
+          var(--kit-color-primary) 10%,
+          var(--kit-surface-secondary)
+        );
       }
 
       .entry-route {
@@ -2753,7 +3185,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         padding: 0.75rem 0.8rem;
         color: var(--kit-text-primary);
         background: var(--kit-surface-primary);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: var(--kit-radius-md);
         font: inherit;
       }
@@ -2773,9 +3206,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         margin: 0;
         padding: var(--kit-space-sm);
         border-radius: var(--kit-radius-md);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 88%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 88%,
+          transparent
+        );
         color: var(--kit-text-primary);
-        font: 0.88rem/1.55 var(--kit-font-family-mono, "JetBrains Mono", monospace);
+        font: 0.88rem/1.55
+          var(--kit-font-family-mono, "JetBrains Mono", monospace);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
@@ -2789,7 +3227,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       .issue-list li {
         padding: var(--kit-space-sm);
         border-radius: var(--kit-radius-md);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 86%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 86%,
+          transparent
+        );
       }
 
       .issue-list li {
@@ -2810,7 +3252,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
         .tag-management-head,
         .tag-management-row {
-          grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.5fr) minmax(7rem, 0.34fr) auto;
+          grid-template-columns:
+            minmax(0, 1fr) minmax(8rem, 0.5fr) minmax(7rem, 0.34fr)
+            auto;
         }
 
         .studio-shell[data-rail-visible="true"] {
@@ -2821,7 +3265,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           position: relative;
           height: auto;
           border-right: 0;
-          border-bottom: 1px solid color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
+          border-bottom: 1px solid
+            color-mix(in srgb, var(--kit-border-primary) 80%, transparent);
         }
 
         .main-panel[data-browse-mode="true"] {
@@ -2877,18 +3322,31 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         super.disconnectedCallback();
     }
     willUpdate(changedProperties) {
-        if (changedProperties.has("contentValue") &&
-            this.contentValue !== this.editorContent.value) {
+        const selectedRouteChanged = changedProperties.has("selectedRoute");
+        const selectedRoutePreviousValue = changedProperties.get("selectedRoute");
+        const selectedRouteTransitioned = selectedRouteChanged &&
+            selectedRoutePreviousValue !== undefined &&
+            selectedRoutePreviousValue !== this.selectedRoute;
+        const contentValueChanged = changedProperties.has("contentValue");
+        const contentValueDiffers = this.contentValue !== this.editorContent.value;
+        if (selectedRouteChanged || (contentValueChanged && contentValueDiffers)) {
             this.syncReactiveState(() => {
                 this.editorContent.value = this.contentValue;
+                this.draftDirty.value = false;
             });
+        }
+        if (selectedRouteTransitioned) {
+            this.resetRouteScopedState("draft");
+        }
+        if (selectedRouteChanged || (contentValueChanged && contentValueDiffers)) {
+            this.editorExternalSyncGeneration += 1;
         }
         if (changedProperties.has("workflowState")) {
             this.syncReactiveState(() => {
                 this.synchronizeWorkflowState(this.workflowState);
             });
         }
-        if (changedProperties.has("selectedRoute")) {
+        if (selectedRouteTransitioned) {
             this.featureMediaPickerOpen = false;
         }
     }
@@ -2908,7 +3366,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         const showStructuredEditor = selectedEntry?.kind === "homepage" ||
             selectedEntry?.kind === "site_settings" ||
             selectedEntry?.kind === "navigation";
-        const canConfirmPublish = this.reviewDiffs.length > 0 && currentState === "publish-confirmation" && !this.busy;
+        const canConfirmPublish = this.reviewDiffs.length > 0 &&
+            currentState === "publish-confirmation" &&
+            !this.busy;
         const mode = this.workspaceMode;
         const browseVisible = mode === "browse" || this.browsePanelOpen;
         const canWriteCurrentRoute = this.canWriteCurrentRoute();
@@ -2920,10 +3380,14 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.workspace.profile.title;
         const showHeroCopy = mode !== "write";
         const inspectorVisible = mode === "write" &&
-            (this.workspacePanelOpen || (showMetadataEditor && this.metadataPanelOpen));
+            (this.workspacePanelOpen ||
+                (showMetadataEditor && this.metadataPanelOpen));
         const railVisible = mode === "browse";
         return html `
-      <section class="studio-shell" data-rail-visible=${railVisible ? "true" : "false"}>
+      <section
+        class="studio-shell"
+        data-rail-visible=${railVisible ? "true" : "false"}
+      >
         ${railVisible
             ? html `
               ${this.renderGhostRail(siteEntries, postEntries, docEntries)}
@@ -2941,95 +3405,100 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             : mode === "write"
                 ? this.renderWriteStatusBar(currentState, selectedEntry, showMetadataEditor, inspectorVisible, canWriteCurrentRoute, browseVisible, canPreview, canReview, canConfirmPublish, canPublish)
                 : html `
-                <section class="card hero-card">
-                  ${showHeroCopy
+                  <section class="card hero-card">
+                    ${showHeroCopy
                     ? html `
-                        <div class="hero-copy">
-                          <p class="eyebrow">${this.workspace.profile.brand}</p>
-                          <h1>${selectedEntry?.title ?? this.title}</h1>
-                          <p>
-                            ${this.statusMessage.length > 0
+                          <div class="hero-copy">
+                            <p class="eyebrow">
+                              ${this.workspace.profile.brand}
+                            </p>
+                            <h1>${selectedEntry?.title ?? this.title}</h1>
+                            <p>
+                              ${this.statusMessage.length > 0
                         ? this.statusMessage
                         : "Editor-first drafting with staged preview, review, and publish for Git-tracked content."}
-                          </p>
-                          <div class="status-row">
-                            <span class="status-chip" data-tone="ready"
-                              >${labelForWorkspaceMode(mode)}</span
-                            >
-                            <span class="summary-pill">${labelForWorkflowState(currentState)}</span>
+                            </p>
+                            <div class="status-row">
+                              <span class="status-chip" data-tone="ready"
+                                >${labelForWorkspaceMode(mode)}</span
+                              >
+                              <span class="summary-pill"
+                                >${labelForWorkflowState(currentState)}</span
+                              >
+                            </div>
+                            ${this.renderSessionAuthSummary("hero")}
                           </div>
-                          ${this.renderSessionAuthSummary("hero")}
-                        </div>
-                      `
-                    : null}
-                  <div class="hero-actions">
-                    ${!browseVisible
-                    ? html `
-                          <button
-                            class="action-button"
-                            aria-label="Browse content"
-                            data-variant="quiet"
-                            @click=${() => {
-                        this.openBrowseSurfaceForCurrentRoute();
-                    }}
-                            type="button"
-                          >
-                            Browse content
-                          </button>
                         `
                     : null}
-                    <button
-                      class="action-button"
-                      aria-label="Show write mode"
-                      @click=${() => {
+                    <div class="hero-actions">
+                      ${!browseVisible
+                    ? html `
+                            <button
+                              class="action-button"
+                              aria-label="Browse content"
+                              data-variant="quiet"
+                              @click=${() => {
+                        this.openBrowseSurfaceForCurrentRoute();
+                    }}
+                              type="button"
+                            >
+                              Browse content
+                            </button>
+                          `
+                    : null}
+                      <button
+                        class="action-button"
+                        aria-label="Show write mode"
+                        @click=${() => {
                     this.workspaceMode = "write";
                     this.browsePanelOpen = false;
                 }}
-                      type="button"
-                    >
-                      Write
-                    </button>
-                    <button
-                      class="action-button"
-                      aria-label="Preview current draft"
-                      data-action="preview"
-                      data-variant="default"
-                      ?disabled=${this.busy || !canPreview}
-                      @click=${this.requestPreview}
-                      type="button"
-                    >
-                      Preview
-                    </button>
-                    <button
-                      class="action-button"
-                      aria-label="Review publish diff"
-                      data-action="review-publish"
-                      data-variant=${mode === "preview" ? "primary" : "default"}
-                      ?disabled=${this.busy || !canReview}
-                      @click=${this.requestPublishReview}
-                      type="button"
-                    >
-                      Review Publish
-                    </button>
-                    ${canConfirmPublish
+                        type="button"
+                      >
+                        Write
+                      </button>
+                      <button
+                        class="action-button"
+                        aria-label="Preview current draft"
+                        data-action="preview"
+                        data-variant="default"
+                        ?disabled=${this.busy || !canPreview}
+                        @click=${this.requestPreview}
+                        type="button"
+                      >
+                        Preview
+                      </button>
+                      <button
+                        class="action-button"
+                        aria-label="Review publish diff"
+                        data-action="review-publish"
+                        data-variant=${mode === "preview"
+                    ? "primary"
+                    : "default"}
+                        ?disabled=${this.busy || !canReview}
+                        @click=${this.requestPublishReview}
+                        type="button"
+                      >
+                        Review Publish
+                      </button>
+                      ${canConfirmPublish
                     ? html `
-                          <button
-                            class="action-button"
-                            aria-label="Confirm publish current draft"
-                            data-action="confirm-publish"
-                            data-variant="success"
-                            ?disabled=${!canPublish}
-                            @click=${this.requestPublishConfirm}
-                            type="button"
-                          >
-                            Confirm Publish
-                          </button>
-                        `
+                            <button
+                              class="action-button"
+                              aria-label="Confirm publish current draft"
+                              data-action="confirm-publish"
+                              data-variant="success"
+                              ?disabled=${!canPublish}
+                              @click=${this.requestPublishConfirm}
+                              type="button"
+                            >
+                              Confirm Publish
+                            </button>
+                          `
                     : null}
-                  </div>
-                </section>
-              `}
-
+                    </div>
+                  </section>
+                `}
           ${railVisible
             ? null
             : html `
@@ -3050,8 +3519,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   ${inspectorVisible
                 ? html `
                         <div class="inspector-stack">
-                          ${this.workspacePanelOpen ? this.renderWorkspacePanel() : null}
-                            ${showMetadataEditor && this.metadataPanelOpen
+                          ${this.workspacePanelOpen
+                    ? this.renderWorkspacePanel()
+                    : null}
+                          ${showMetadataEditor && this.metadataPanelOpen
                     ? this.renderMetadataPanel(selectedEntry)
                     : null}
                         </div>
@@ -3061,7 +3532,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               `}
         </div>
 
-        ${railVisible && this.searchOverlayOpen ? this.renderSearchOverlay() : null}
+        ${railVisible && this.searchOverlayOpen
+            ? this.renderSearchOverlay()
+            : null}
       </section>
     `;
     }
@@ -3079,7 +3552,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             >${publicationBrandInitial(this.workspace.profile.title)}</span
           >
           <div class="rail-brand-copy">
-            <span class="rail-brand-title">${this.workspace.profile.title}</span>
+            <span class="rail-brand-title"
+              >${this.workspace.profile.title}</span
+            >
           </div>
           <button
             class="rail-search-button"
@@ -3095,11 +3570,15 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <div class="rail-nav-group">
             <button
               class="rail-nav-button"
-              data-selected=${this.browseSurface === "dashboard" ? "true" : "false"}
+              data-selected=${this.browseSurface === "dashboard"
+            ? "true"
+            : "false"}
               type="button"
               @click=${() => this.openBrowseSurface("dashboard")}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("dashboard")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("dashboard")}</span
+              >
               <span class="rail-nav-label">Dashboard</span>
               <span></span>
             </button>
@@ -3109,7 +3588,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               type="button"
               @click=${this.handleViewSiteTrigger}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("external")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("external")}</span
+              >
               <span class="rail-nav-label">View site</span>
               <span></span>
             </button>
@@ -3122,7 +3603,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               type="button"
               @click=${() => this.openBrowseSurface("posts")}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("posts")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("posts")}</span
+              >
               <span class="rail-nav-label">Posts</span>
               <span class="rail-nav-plus">+</span>
             </button>
@@ -3140,7 +3623,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               type="button"
               @click=${() => this.openBrowseSurface("pages")}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("pages")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("pages")}</span
+              >
               <span class="rail-nav-label">Pages</span>
               <span></span>
             </button>
@@ -3150,21 +3635,28 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               type="button"
               @click=${this.handleTagsTrigger}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("tags")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("tags")}</span
+              >
               <span class="rail-nav-label">Tags</span>
               <span></span>
             </button>
             <button
               class="rail-nav-button"
-              data-selected=${this.browseSurface === "placeholder" && this.placeholderTitle === "Members"
+              data-selected=${this.browseSurface === "placeholder" &&
+            this.placeholderTitle === "Members"
             ? "true"
             : "false"}
               type="button"
               @click=${this.handleMembersTrigger}
             >
-              <span class="rail-nav-icon" aria-hidden="true">${renderGhostShellIcon("members")}</span>
+              <span class="rail-nav-icon" aria-hidden="true"
+                >${renderGhostShellIcon("members")}</span
+              >
               <span class="rail-nav-label">Members</span>
-              <span class="summary-pill">${Math.max(this.workspace.policy.identityProviders.length, 3)}</span>
+              <span class="summary-pill"
+                >${Math.max(this.workspace.policy.identityProviders.length, 3)}</span
+              >
             </button>
           </div>
         </div>
@@ -3177,13 +3669,17 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <div class="dock-avatar-wrap">
             <button
               class="dock-avatar-button"
-              aria-label=${this.accountPopoverOpen ? "Hide account menu" : "Show account menu"}
+              aria-label=${this.accountPopoverOpen
+            ? "Hide account menu"
+            : "Show account menu"}
               type="button"
               @click=${() => {
             this.accountPopoverOpen = !this.accountPopoverOpen;
         }}
             >
-              <span class="dock-avatar-chip">${initialsForLabel(principal.displayName)}</span>
+              <span class="dock-avatar-chip"
+                >${initialsForLabel(principal.displayName)}</span
+              >
               <span class="dock-avatar-chevron" aria-hidden="true">
                 ${renderGhostShellIcon("chevron-down")}
               </span>
@@ -3211,7 +3707,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.accountPopoverOpen = false;
         }}
           >
-            <span class="theme-toggle-icon" data-tone="light" aria-hidden="true">
+            <span
+              class="theme-toggle-icon"
+              data-tone="light"
+              aria-hidden="true"
+            >
               ${renderGhostShellIcon("theme-sun")}
             </span>
             <span class="theme-toggle-thumb"></span>
@@ -3227,7 +3727,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         return html `
       <button
         class="rail-subnav-button"
-        data-selected=${this.browseSurface === "posts" && this.postsFilter === filter ? "true" : "false"}
+        data-selected=${this.browseSurface === "posts" &&
+            this.postsFilter === filter
+            ? "true"
+            : "false"}
         type="button"
         @click=${() => this.openBrowseSurface("posts", filter)}
       >
@@ -3241,7 +3744,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         return html `
       <section class="account-popover" aria-label="Account menu">
         <div class="account-popover-header">
-          <span class="account-popover-avatar">${initialsForLabel(principal.displayName)}</span>
+          <span class="account-popover-avatar"
+            >${initialsForLabel(principal.displayName)}</span
+          >
           <h3 class="account-popover-title">${principal.displayName}</h3>
           <p class="account-popover-copy">${principal.id}</p>
           ${this.renderSessionAccessBadges("popover")}
@@ -3255,20 +3760,36 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           >
             What's new?
           </button>
-          <button class="account-popover-button" type="button" @click=${this.handleProfileTrigger}>
+          <button
+            class="account-popover-button"
+            type="button"
+            @click=${this.handleProfileTrigger}
+          >
             Your profile
           </button>
         </div>
         <div class="account-popover-section">
-          <button class="account-popover-button" type="button" @click=${this.handleHelpTrigger}>
+          <button
+            class="account-popover-button"
+            type="button"
+            @click=${this.handleHelpTrigger}
+          >
             Help center
           </button>
-          <button class="account-popover-button" type="button" @click=${this.handleResourcesTrigger}>
+          <button
+            class="account-popover-button"
+            type="button"
+            @click=${this.handleResourcesTrigger}
+          >
             Resources & guides
           </button>
         </div>
         <div class="account-popover-section">
-          <button class="account-popover-button" type="button" @click=${this.handleSignOutTrigger}>
+          <button
+            class="account-popover-button"
+            type="button"
+            @click=${this.handleSignOutTrigger}
+          >
             Sign out
           </button>
         </div>
@@ -3300,6 +3821,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               ${renderGhostShellIcon("search")}
             </span>
             <input
+              name="quick-search"
               aria-label="Quick-open search"
               class="search-overlay-input"
               .value=${this.searchOverlayQuery}
@@ -3326,10 +3848,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 }}
                               >
                                 <span class="search-overlay-copy">
-                                  <span class="search-overlay-title">${option.title}</span>
-                                  <span class="search-overlay-detail">${option.detail}</span>
+                                  <span class="search-overlay-title"
+                                    >${option.title}</span
+                                  >
+                                  <span class="search-overlay-detail"
+                                    >${option.detail}</span
+                                  >
                                 </span>
-                                <span class="search-overlay-badge">${option.badge}</span>
+                                <span class="search-overlay-badge"
+                                  >${option.badge}</span
+                                >
                               </button>
                             </li>
                           `)}
@@ -3341,9 +3869,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                       </p>
                     `}
               `
-            : html `
-                <p class="search-overlay-hint">Open with Ctrl/⌘ + K</p>
-              `}
+            : html ` <p class="search-overlay-hint">Open with Ctrl/⌘ + K</p> `}
         </section>
       </div>
     `;
@@ -3416,8 +3942,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             });
         }
         const scopedPostEntries = this.filterPostEntries(postEntries);
-        const filteredPostEntries = this.filterEntriesByTag(this.filterEntriesByAuthor(this.filterEntriesByAccess(scopedPostEntries, this.postsAccessFilter), this.postsAuthorFilter), this.postsTagFilter);
-        const visiblePostEntries = this.sortCollectionEntries(filteredPostEntries, this.postsSort);
+        const allPostEntriesAfterSecondaryFilters = this.filterEntriesByTag(this.filterEntriesByAuthor(this.filterEntriesByAccess(postEntries, this.postsAccessFilter), this.postsAuthorFilter), this.postsTagFilter);
+        const visiblePostEntries = this.sortCollectionEntries(this.filterEntriesByTag(this.filterEntriesByAuthor(this.filterEntriesByAccess(scopedPostEntries, this.postsAccessFilter), this.postsAuthorFilter), this.postsTagFilter), this.postsSort);
+        const bucketTabs = this.buildPostBucketTabs(allPostEntriesAfterSecondaryFilters);
         return this.renderCollectionSurface({
             surface: "posts",
             title: "Posts",
@@ -3428,20 +3955,15 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 scopedEntries: scopedPostEntries,
                 visibleEntries: visiblePostEntries,
             }),
+            bucketTabs: bucketTabs,
             primaryFilter: {
                 activeValue: this.postsFilter,
-                options: [
-                    { value: "all", label: "All posts" },
-                    { value: "draft", label: "Drafts" },
-                    { value: "scheduled", label: "Scheduled" },
-                    { value: "published", label: "Published" },
-                ],
+                options: PUBLISHING_STUDIO_POST_BUCKETS.map((bucket) => ({
+                    value: bucket,
+                    label: this.labelForPostBucket(bucket),
+                })),
                 onChange: (value) => {
-                    if (isGhostPostFilter(value)) {
-                        if (value === "all") {
-                            this.postsFilter = value;
-                            return;
-                        }
+                    if (isGhostPostFilter(value) && value !== "all") {
                         this.openBrowseSurface("posts", value);
                     }
                 },
@@ -3482,7 +4004,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     renderPlaceholderSurface() {
         return html `
-      <section class="browse-surface placeholder-surface" aria-label=${`${this.placeholderTitle} placeholder`}>
+      <section
+        class="browse-surface placeholder-surface"
+        aria-label=${`${this.placeholderTitle} placeholder`}
+      >
         <header class="browse-header">
           <div>
             <p class="browse-kicker">Unavailable Surface</p>
@@ -3548,7 +4073,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           </p>
           <div class="summary-grid">
             <span class="summary-pill">
-              Canonical URL: ${canonicalSiteUrl.length > 0 ? canonicalSiteUrl : "Not configured"}
+              Canonical URL:
+              ${canonicalSiteUrl.length > 0
+            ? canonicalSiteUrl
+            : "Not configured"}
             </span>
             <span class="summary-pill">
               Deploy targets: ${String(this.workspace.deployTargets.length)}
@@ -3566,7 +4094,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 : "URL not configured"}
                         </span>
                         <span class="entry-description">
-                          ${target.provider}${target.projectName ? ` · ${target.projectName}` : ""}
+                          ${target.provider}${target.projectName
+                ? ` · ${target.projectName}`
+                : ""}
                         </span>
                       </li>
                     `)}
@@ -3609,7 +4139,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           aria-live="polite"
           aria-atomic="true"
         >
-          <p class="transient-feedback-message">${this.transientFeedback.message}</p>
+          <p class="transient-feedback-message">
+            ${this.transientFeedback.message}
+          </p>
         </div>
       </div>
     `;
@@ -3634,7 +4166,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             <h1 class="browse-heading">Tags</h1>
           </div>
           <div class="tag-surface-toolbar">
-            <div class="tag-surface-tabs" role="tablist" aria-label="Tag visibility">
+            <div
+              class="tag-surface-tabs"
+              role="tablist"
+              aria-label="Tag visibility"
+            >
               <button
                 class="tag-surface-tab"
                 type="button"
@@ -3712,8 +4248,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             <div class="tag-management-primary">
               <p class="tag-management-title">${tagLabel}</p>
               <span class="tag-management-meta">
-                ${scopeLabel.length > 0 ? `${scopeLabel} • ` : ""}${assignmentCount}
-                assignment${assignmentCount === 1 ? "" : "s"}${tag.lastPublishedAt
+                ${scopeLabel.length > 0
+            ? `${scopeLabel} • `
+            : ""}${assignmentCount}
+                assignment${assignmentCount === 1
+            ? ""
+            : "s"}${tag.lastPublishedAt
             ? ` • Last used ${formatDateLabel(tag.lastPublishedAt)}`
             : ""}
               </span>
@@ -3749,8 +4289,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         const mediaOptions = this.getFeatureMediaOptions();
         const featureImageAsset = mediaOptions.find((asset) => asset.path === draft.featureImage);
         const ogImageAsset = mediaOptions.find((asset) => asset.path === draft.ogImage);
-        const featureImagePreview = resolveTagImagePreviewPath(draft.featureImage);
-        const ogImagePreview = resolveTagImagePreviewPath(draft.ogImage);
+        const featureImagePreview = resolvePublishingStudioAssetPreviewPath(draft.featureImage);
+        const ogImagePreview = resolvePublishingStudioAssetPreviewPath(draft.ogImage);
         const seoTitleCount = draft.seoTitle.trim().length;
         const seoDescriptionCount = draft.seoDescription.trim().length;
         const headInjectionCount = draft.codeInjectionHead.trim().length;
@@ -3784,7 +4324,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     type="button"
                     @click=${this.deleteTagEditorDraft}
                   >
-                    ${this.tagDeleteConfirmOpen ? "Confirm delete" : "Delete tag"}
+                    ${this.tagDeleteConfirmOpen
+                ? "Confirm delete"
+                : "Delete tag"}
                   </button>
                   ${this.tagDeleteConfirmOpen
                 ? html `
@@ -3820,8 +4362,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   ${isExisting ? "Edit tag" : "Create a tag"}
                 </h2>
                 <p class="dashboard-panel-support">
-                  Canonical tag details live in Showa first: name, slug, description,
-                  visibility, and publication imagery.
+                  Canonical tag details live in Showa first: name, slug,
+                  description, visibility, and publication imagery.
                 </p>
               </div>
 
@@ -3849,7 +4391,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     type="text"
                   />
                   <span class="tag-editor-meta">
-                    ${normalizedDraftSlug === (draft.slug.trim() || normalizedDraftSlug)
+                    ${normalizedDraftSlug ===
+            (draft.slug.trim() || normalizedDraftSlug)
             ? `Canonical slug: ${normalizedDraftSlug}`
             : `Slug already claimed. Saving will use ${normalizedDraftSlug}.`}
                   </span>
@@ -3913,7 +4456,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             previewPath: featureImagePreview,
             previewAlt: "Tag feature image preview",
             previewLabel: featureImageAsset?.label ?? draft.featureImage,
-            fallback: html `<span class="tag-editor-meta">Uses the shared media library.</span>`,
+            fallback: html `<span class="tag-editor-meta"
+                    >Uses the shared media library.</span
+                  >`,
         })}
               </div>
             </section>
@@ -3921,10 +4466,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             <section class="dashboard-panel tag-editor-form">
               <div class="settings-card-body">
                 <p class="browse-kicker">SEO</p>
-                <h2 class="dashboard-panel-title">Search and social metadata</h2>
+                <h2 class="dashboard-panel-title">
+                  Search and social metadata
+                </h2>
                 <p class="dashboard-panel-support">
-                  Store SEO metadata canonically now. Public tag archive rendering can
-                  consume it later without re-authoring.
+                  Store SEO metadata canonically now. Public tag archive
+                  rendering can consume it later without re-authoring.
                 </p>
               </div>
 
@@ -3939,7 +4486,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     @input=${this.handleTagDraftSeoTitleInput}
                     type="text"
                   />
-                  <span class="tag-editor-meta">Recommended up to 60 characters.</span>
+                  <span class="tag-editor-meta"
+                    >Recommended up to 60 characters.</span
+                  >
                   <span class="tag-editor-counter">${seoTitleCount}/60</span>
                 </label>
 
@@ -3952,8 +4501,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     .value=${draft.seoDescription}
                     @input=${this.handleTagDraftSeoDescriptionInput}
                   ></textarea>
-                  <span class="tag-editor-meta">Recommended up to 160 characters.</span>
-                  <span class="tag-editor-counter">${seoDescriptionCount}/160</span>
+                  <span class="tag-editor-meta"
+                    >Recommended up to 160 characters.</span
+                  >
+                  <span class="tag-editor-counter"
+                    >${seoDescriptionCount}/160</span
+                  >
                 </label>
 
                 ${this.renderTagMediaField({
@@ -3983,8 +4536,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 <p class="browse-kicker">Code injection</p>
                 <h2 class="dashboard-panel-title">Stored, not executed</h2>
                 <p class="dashboard-panel-support">
-                  This studio stores tag-level head and footer code for downstream
-                  consumers. It never executes the code inside the editor shell.
+                  This studio stores tag-level head and footer code for
+                  downstream consumers. It never executes the code inside the
+                  editor shell.
                 </p>
               </div>
 
@@ -3998,7 +4552,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     .value=${draft.codeInjectionHead}
                     @input=${this.handleTagDraftCodeInjectionHeadInput}
                   ></textarea>
-                  <span class="tag-editor-counter">${headInjectionCount} chars</span>
+                  <span class="tag-editor-counter"
+                    >${headInjectionCount} chars</span
+                  >
                 </label>
 
                 <label class="tag-editor-field">
@@ -4010,7 +4566,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     .value=${draft.codeInjectionFoot}
                     @input=${this.handleTagDraftCodeInjectionFootInput}
                   ></textarea>
-                  <span class="tag-editor-counter">${footInjectionCount} chars</span>
+                  <span class="tag-editor-counter"
+                    >${footInjectionCount} chars</span
+                  >
                 </label>
               </div>
             </section>
@@ -4019,7 +4577,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <aside class="dashboard-panel tag-editor-sidebar">
             <div class="settings-card-body">
               <p class="browse-kicker">Preview</p>
-              <h2 class="dashboard-mini-card-title">How this tag will appear</h2>
+              <h2 class="dashboard-mini-card-title">
+                How this tag will appear
+              </h2>
             </div>
 
             <div class="tag-editor-preview">
@@ -4043,12 +4603,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   `
             : null}
               <div class="summary-grid">
-                <span class="summary-pill">Accent: ${normalizeTagColor(draft.color)}</span>
+                <span class="summary-pill"
+                  >Accent: ${normalizeTagColor(draft.color)}</span
+                >
                 <span class="summary-pill">
-                  SEO: ${draft.seoTitle.trim().length > 0 ? "custom" : "default"}
+                  SEO:
+                  ${draft.seoTitle.trim().length > 0 ? "custom" : "default"}
                 </span>
                 <span class="summary-pill">
-                  OG image: ${draft.ogImage.trim().length > 0 ? "custom" : "fallback"}
+                  OG image:
+                  ${draft.ogImage.trim().length > 0 ? "custom" : "fallback"}
                 </span>
               </div>
             </div>
@@ -4078,6 +4642,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     renderCollectionSurface(model) {
         const canCreateDrafts = this.hasCapability("content:draft:write");
+        const selectedPostsBucket = this.getCurrentPostsBucket();
+        const selectedPostsBucketIndex = this.getPostsBucketIndex(selectedPostsBucket);
         return html `
       <section
         class="browse-surface"
@@ -4100,18 +4666,20 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         ${keyed(model.surface, html `
             <div
               class="collection-filters"
-              data-parity-filter-count="5"
+              data-parity-filter-count=${model.surface === "posts" ? "4" : "5"}
               data-parity-region="five-filter-row"
             >
-              ${this.renderCollectionFilterChip({
-            label: `${model.title} status filter`,
-            value: model.primaryFilter.activeValue,
-            options: model.primaryFilter.options,
-            disabled: model.primaryFilter.options.length <= 1,
-            onChange: (value) => {
-                model.primaryFilter.onChange?.(value);
-            },
-        })}
+              ${model.surface === "posts"
+            ? null
+            : this.renderCollectionFilterChip({
+                label: `${model.title} status filter`,
+                value: model.primaryFilter.activeValue,
+                options: model.primaryFilter.options,
+                disabled: model.primaryFilter.options.length <= 1,
+                onChange: (value) => {
+                    model.primaryFilter.onChange?.(value);
+                },
+            })}
               ${this.renderCollectionFilterChip({
             label: `${model.title} access filter`,
             value: model.accessFilter.activeValue,
@@ -4142,35 +4710,58 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             label: `${model.title} sort order`,
             value: model.sortFilter.activeValue,
             options: model.sortFilter.options,
-            prefix: "Sort by:",
             onChange: (value) => {
                 model.sortFilter.onChange?.(value);
             },
         })}
             </div>
           `)}
-
-        <section class="collection-table" data-surface=${model.surface}>
-          <div class="collection-table-head" aria-hidden="true">
-            <span>Title</span>
-            ${model.surface === "posts"
+        ${model.surface === "posts" && model.bucketTabs
             ? html `
-                  <span class="collection-table-head-extra">Sends</span>
-                  <span class="collection-table-head-extra">Opens</span>
-                `
-            : null}
-            <span>Status</span>
-          </div>
-
-          <ul class="collection-rows">
-            ${model.entries.length > 0
-            ? model.entries.map((entry) => this.renderCollectionRow(entry))
-            : model.emptyState
-                ? this.renderCollectionEmptyState(model.emptyState)
-                : null}
-          </ul>
-        </section>
+              <kit-tabs
+                aria-label="Post buckets"
+                class="collection-bucket-tabs-control"
+                style="--kit-space-lg: 0;"
+                .selected=${selectedPostsBucketIndex}
+                @tab-change=${this.handlePostBucketTabChange}
+              >
+                ${model.bucketTabs.map((tab) => html `
+                    <kit-tab slot="tab"
+                      >${this.labelForPostBucket(tab.bucket, tab.count)}</kit-tab
+                    >
+                  `)}
+              </kit-tabs>
+              ${this.renderCollectionTable(model.surface, model.entries, model.emptyState)}
+            `
+            : this.renderCollectionTable(model.surface, model.entries, model.emptyState)}
       </section>
+    `;
+    }
+    renderCollectionTable(surface, entries, emptyState) {
+        return html `
+      <kit-publishing-content-list
+        class="collection-table"
+        data-surface=${surface}
+        .caption=${`${surface === "posts" ? "Posts" : "Pages"} collection`}
+        .entries=${entries}
+        .selectedRoute=${this.selectedRoute}
+        .emptyState=${emptyState}
+        .busy=${this.busy}
+        .onEditEntry=${(entry) => this.selectRoute(entry.route)}
+        .canEditEntry=${(entry) => this.canWriteEntry(entry)}
+        .onPreviewEntry=${(entry) => this.requestBrowseRowPreview(entry.route)}
+        .canPreviewEntry=${(entry) => this.canPreviewEntry(entry)}
+        .onDuplicateEntry=${(entry) => this.emitEvent("publishing-duplicate-row", { route: entry.route })}
+        .canDuplicateEntry=${(entry) => this.canWriteEntry(entry)}
+      ></kit-publishing-content-list>
+
+      <div
+        hidden
+        aria-hidden="true"
+        data-parity-region="collection-title-mirror"
+      >
+        ${entries.map((entry) => html `<span class="collection-row-title">${entry.title}</span>`)}
+      </div>
     `;
     }
     renderCollectionEmptyState(emptyState) {
@@ -4276,7 +4867,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         >
           <div class="collection-row-primary">
             <p class="collection-row-title">${entry.title}</p>
-            <span class="collection-row-meta">${this.renderCollectionEntryMeta(entry)}</span>
+            <span class="collection-row-meta"
+              >${this.renderCollectionEntryMeta(entry)}</span
+            >
           </div>
           ${entry.kind === "post"
             ? html `
@@ -4286,14 +4879,23 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 <span class="collection-row-age">
                   ${this.renderCollectionRowAction("edit", entry)}
                 </span>
-                <span class="entry-badge collection-status" data-tone=${entry.status}>
+                <span class="collection-row-copy">
+                  ${this.renderCollectionRowAction("duplicate", entry)}
+                </span>
+                <span
+                  class="entry-badge collection-status"
+                  data-tone=${entry.status}
+                >
                   ${entry.status.toUpperCase()}
                 </span>
               `
             : html `
                 <span class="collection-row-trailing">
                   ${this.renderCollectionRowActionCluster(entry)}
-                  <span class="entry-badge collection-status" data-tone=${entry.status}>
+                  <span
+                    class="entry-badge collection-status"
+                    data-tone=${entry.status}
+                  >
                     ${entry.status.toUpperCase()}
                   </span>
                 </span>
@@ -4329,6 +4931,26 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (!this.canWriteEntry(entry)) {
             return null;
         }
+        if (action === "duplicate") {
+            return html `
+        <button
+          class="collection-row-action"
+          aria-label=${`Duplicate ${entry.title}`}
+          data-row-action="duplicate"
+          ?disabled=${this.busy}
+          type="button"
+          @click=${(event) => {
+                event.stopPropagation();
+                this.emitEvent("publishing-duplicate-row", { route: entry.route });
+            }}
+          @keydown=${(event) => {
+                event.stopPropagation();
+            }}
+        >
+          Duplicate
+        </button>
+      `;
+        }
         return html `
       <button
         class="collection-row-action"
@@ -4351,13 +4973,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     renderCollectionRowActionCluster(entry) {
         const previewAction = this.renderCollectionRowAction("preview", entry);
         const editAction = this.renderCollectionRowAction("edit", entry);
-        if (!previewAction && !editAction) {
+        const duplicateAction = this.renderCollectionRowAction("duplicate", entry);
+        if (!previewAction && !editAction && !duplicateAction) {
             return null;
         }
         return html `
       <span class="collection-row-trailing-actions">
-        ${previewAction}
-        ${editAction}
+        ${previewAction} ${editAction} ${duplicateAction}
       </span>
     `;
     }
@@ -4375,12 +4997,17 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               />
             `
                 : html `
-              <span class="collection-row-author-avatar-fallback" aria-hidden="true">
+              <span
+                class="collection-row-author-avatar-fallback"
+                aria-hidden="true"
+              >
                 ${initialsForLabel(authorName)}
               </span>
             `
             : null}
-      <span class="collection-row-meta-copy">${this.formatCollectionEntryByline(entry)}</span>
+      <span class="collection-row-meta-copy"
+        >${this.formatCollectionEntryByline(entry)}</span
+      >
       ${primaryTag
             ? html `<span class="collection-row-primary-tag">${primaryTag}</span>`
             : null}
@@ -4479,7 +5106,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
         <div class="dashboard-grid" data-parity-region="dashboard-grid">
           <div class="dashboard-main-column">
-            <section class="dashboard-panel dashboard-summary-panel" data-parity-region="dashboard-summary-panel">
+            <section
+              class="dashboard-panel dashboard-summary-panel"
+              data-parity-region="dashboard-summary-panel"
+            >
               <div class="dashboard-panel-header">
                 <div class="settings-card-body">
                   <h2 class="dashboard-panel-title">Content overview</h2>
@@ -4516,7 +5146,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 <div class="settings-card-body">
                   <h2 class="dashboard-mini-card-title">Customize your site</h2>
                   <p class="dashboard-mini-card-copy">
-                    Homepage, navigation, and publication settings stay behind the Settings hub.
+                    Homepage, navigation, and publication settings stay behind
+                    the Settings hub.
                   </p>
                 </div>
                 <div class="dashboard-inline-actions">
@@ -4546,9 +5177,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
 
               <section class="dashboard-panel">
                 <div class="settings-card-body">
-                  <h2 class="dashboard-mini-card-title">Looking for help with the studio?</h2>
+                  <h2 class="dashboard-mini-card-title">
+                    Looking for help with the studio?
+                  </h2>
                   <p class="dashboard-mini-card-copy">
-                    Start in the guides surface if you want the canonical docs workflow in one place.
+                    Start in the guides surface if you want the canonical docs
+                    workflow in one place.
                   </p>
                 </div>
                 <div class="dashboard-inline-actions">
@@ -4572,7 +5206,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           </div>
 
           <aside class="dashboard-side-column">
-            <section class="dashboard-panel" data-parity-region="dashboard-activity-panel">
+            <section
+              class="dashboard-panel"
+              data-parity-region="dashboard-activity-panel"
+            >
               <div class="settings-card-body">
                 <p class="browse-kicker">Activity</p>
                 <h2 class="dashboard-panel-title">Recent changes</h2>
@@ -4598,12 +5235,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                               @click=${() => this.selectRoute(entry.route)}
                             >
                               <span class="dashboard-activity-copy">
-                                <span class="dashboard-activity-title">${entry.title}</span>
+                                <span class="dashboard-activity-title"
+                                  >${entry.title}</span
+                                >
                                 <span class="dashboard-activity-detail">
                                   ${entry.description ?? detail}
                                 </span>
                               </span>
-                              <span class="dashboard-activity-date">${timestamp}</span>
+                              <span class="dashboard-activity-date"
+                                >${timestamp}</span
+                              >
                               <span class="dashboard-activity-meta">
                                 <span>${detail}</span>
                               </span>
@@ -4613,7 +5254,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             })}
                     </ul>
                   `
-            : html `<p class="dashboard-panel-support">No recent content entries are available yet.</p>`}
+            : html `<p class="dashboard-panel-support">
+                    No recent content entries are available yet.
+                  </p>`}
             </section>
           </aside>
         </div>
@@ -4633,7 +5276,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     renderDashboardActionCard(icon, tone, title, copy, actionLabel, onClick, disabled = false) {
         return html `
-      <button class="dashboard-action-card" ?disabled=${disabled} type="button" @click=${onClick}>
+      <button
+        class="dashboard-action-card"
+        ?disabled=${disabled}
+        type="button"
+        @click=${onClick}
+      >
         <span class="dashboard-action-icon" data-tone=${tone}>
           ${renderGhostShellIcon(icon)}
         </span>
@@ -4647,7 +5295,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     renderSettingsCard(icon, tone, title, copy, onClick) {
         return html `
       <button class="settings-card" type="button" @click=${onClick}>
-        <span class="settings-card-icon" data-tone=${tone}>${renderGhostShellIcon(icon)}</span>
+        <span class="settings-card-icon" data-tone=${tone}
+          >${renderGhostShellIcon(icon)}</span
+        >
         <span class="settings-card-body">
           <span class="settings-card-title">${title}</span>
           <span class="settings-card-copy">${copy}</span>
@@ -4665,7 +5315,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         <ul class="entry-list">
           ${entries.length > 0
             ? entries.map((entry) => this.renderBrowseEntry(entry))
-            : html `<li class="empty-state">No ${title.toLowerCase()} items match this filter.</li>`}
+            : html `<li class="empty-state">
+                No ${title.toLowerCase()} items match this filter.
+              </li>`}
         </ul>
       </section>
     `;
@@ -4678,7 +5330,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         return html `
       <section>
         <div class="diff-header">
-          <h3 class="section-title">${this.workspace.profile.docsLabel ?? "Docs"}</h3>
+          <h3 class="section-title">
+            ${this.workspace.profile.docsLabel ?? "Docs"}
+          </h3>
           <span class="summary-pill">${entries.length}</span>
         </div>
         <div class="diff-grid">
@@ -4688,7 +5342,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                     <div>
                       <h4 class="section-title">${section.title}</h4>
                       ${section.description
-                ? html `<p class="section-copy">${section.description}</p>`
+                ? html `<p class="section-copy">
+                            ${section.description}
+                          </p>`
                 : null}
                     </div>
                     <ul class="entry-list">
@@ -4719,9 +5375,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <strong>${entry.title}</strong>
           <div class="entry-meta">
             <span class="entry-badge">${entry.kind}</span>
-            <span class="entry-badge" data-tone=${entry.status}>${entry.status}</span>
+            <span class="entry-badge" data-tone=${entry.status}
+              >${entry.status}</span
+            >
             ${entry.publishedAt
-            ? html `<span class="entry-badge">${formatDateLabel(entry.publishedAt)}</span>`
+            ? html `<span class="entry-badge"
+                  >${formatDateLabel(entry.publishedAt)}</span
+                >`
             : null}
             ${entry.sectionTitle
             ? html `<span class="entry-badge">${entry.sectionTitle}</span>`
@@ -4740,38 +5400,51 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         const roleLabel = this.getSessionRoleLabel();
         const accessCue = this.getSessionAccessCue();
         return html `
-      <section class="card" aria-label="Publication workspace">
-        <div>
-          <p class="eyebrow">Publication workspace</p>
-          <h2 class="section-title">${this.workspace.profile.title}</h2>
-          <p class="section-copy">
+      <section
+        class="metadata-panel workspace-panel"
+        aria-label="Publication workspace"
+        data-parity-region="workspace-drawer"
+      >
+        <header class="metadata-panel-header">
+          <p class="metadata-panel-link-prefix">Workspace context</p>
+          <h2 class="metadata-panel-title">${this.workspace.profile.title}</h2>
+          <p class="workspace-panel-copy">
             ${this.workspace.profile.description ??
             "Domain-agnostic local studio for Git-native static publishing."}
           </p>
-        </div>
-        <div class="summary-grid">
-          <span class="summary-pill">Principal: ${identityLabel}</span>
-          <span class="summary-pill">Role: ${roleLabel}</span>
-          <span class="summary-pill">Access: ${accessCue}</span>
-          <span class="summary-pill">Auth: ${principal.authMethod}</span>
-          ${session.providerId.length > 0
-            ? html `<span class="summary-pill">Provider: ${session.providerId}</span>`
+        </header>
+        <section class="metadata-panel-section">
+          <p class="metadata-panel-kicker">Session</p>
+          <div class="summary-grid">
+            <span class="summary-pill">Principal: ${identityLabel}</span>
+            <span class="summary-pill">Role: ${roleLabel}</span>
+            <span class="summary-pill">Access: ${accessCue}</span>
+            <span class="summary-pill">Auth: ${principal.authMethod}</span>
+            ${session.providerId.length > 0
+            ? html `<span class="summary-pill"
+                  >Provider: ${session.providerId}</span
+                >`
             : null}
-          <span class="summary-pill">Targets: ${this.workspace.deployTargets.length}</span>
-        </div>
+          </div>
+        </section>
         ${this.workspace.deployTargets.length > 0
             ? html `
-              <ul class="media-list">
-                ${this.workspace.deployTargets.map((target) => html `
-                    <li>
-                      <strong>${target.label}</strong>
-                      <div class="entry-route">${target.outputDir}</div>
-                      <div class="entry-description">
-                        ${target.provider}${target.projectName ? ` · ${target.projectName}` : ""}
-                      </div>
-                    </li>
-                  `)}
-              </ul>
+              <section class="metadata-panel-section">
+                <p class="metadata-panel-kicker">Deploy targets</p>
+                <ul class="workspace-target-list">
+                  ${this.workspace.deployTargets.map((target) => html `
+                      <li class="workspace-target-item">
+                        <strong>${target.label}</strong>
+                        <div class="entry-route">${target.outputDir}</div>
+                        <div class="entry-description">
+                          ${target.provider}${target.projectName
+                ? ` · ${target.projectName}`
+                : ""}
+                        </div>
+                      </li>
+                    `)}
+                </ul>
+              </section>
             `
             : null}
       </section>
@@ -4779,7 +5452,22 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     renderWriteStatusBar(currentState, selectedEntry, showMetadataEditor, inspectorVisible, canWriteCurrentRoute, browseVisible, canPreview, canReview, canConfirmPublish, canPublish) {
         const routeLabel = selectedEntry?.route ?? this.selectedRoute;
-        const statusCopy = this.statusMessage.length > 0 ? this.statusMessage : `Editing ${routeLabel}`;
+        const browseLabel = selectedEntry?.kind === "doc_page"
+            ? "Pages"
+            : selectedEntry?.kind === "post"
+                ? "Posts"
+                : "Content";
+        const routeDisplayLabel = this.documentTitle.trim() ||
+            selectedEntry?.title?.trim() ||
+            routeLabel ||
+            "Untitled draft";
+        const statusCopy = this.statusMessage.length > 0
+            ? this.statusMessage
+            : selectedEntry?.kind === "doc_page"
+                ? "Page draft ready for editorial work."
+                : selectedEntry?.kind === "post"
+                    ? "Post draft ready for editorial work."
+                    : "Draft ready for editorial work.";
         const showSiteOpenAction = selectedEntry?.kind === "homepage" ||
             selectedEntry?.kind === "site_settings" ||
             selectedEntry?.kind === "navigation";
@@ -4788,7 +5476,6 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.documentTitle.trim().length === 0 &&
             this.editorContent.value.trim().length === 0;
         if (showGhostEditorChrome) {
-            const browseLabel = selectedEntry?.kind === "doc_page" ? "Pages" : "Posts";
             return html `
         <section
           class="write-status-bar"
@@ -4808,20 +5495,32 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               >
                 ${browseLabel}
               </button>
-              <span class="ghost-editor-label">New</span>
+              <span class="ghost-editor-label">Draft</span>
             </div>
 
-            <button
-              class="ghost-editor-settings"
-              aria-label=${this.metadataPanelOpen ? "Hide page settings" : "Show page settings"}
-              ?disabled=${!canWriteCurrentRoute}
-              @click=${() => {
-                this.metadataPanelOpen = !this.metadataPanelOpen;
-            }}
-              type="button"
-            >
-              ${renderGhostShellIcon("settings")}
-            </button>
+            <div class="ghost-editor-actions">
+              <button
+                class="ghost-editor-workspace"
+                aria-label=${this.workspacePanelOpen
+                ? "Hide workspace context"
+                : "Show workspace context"}
+                @click=${this.toggleWorkspacePanel}
+                type="button"
+              >
+                Workspace
+              </button>
+              <button
+                class="ghost-editor-settings"
+                aria-label=${this.metadataPanelOpen
+                ? "Hide page settings"
+                : "Show page settings"}
+                ?disabled=${!canWriteCurrentRoute}
+                @click=${this.toggleMetadataPanel}
+                type="button"
+              >
+                ${renderGhostShellIcon("settings")}
+              </button>
+            </div>
           </div>
         </section>
       `;
@@ -4833,30 +5532,33 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         aria-label="Write mode status bar"
       >
         <div class="write-status-info">
-          <div class="write-status-meta">
-            <span class="status-chip" data-tone="ready">Write</span>
-            <span class="summary-pill">${labelForWorkflowState(currentState)}</span>
+          <div class="write-status-kicker">
+            ${!browseVisible
+            ? html `
+                  <button
+                    class="write-breadcrumb"
+                    aria-label=${`Browse ${browseLabel.toLowerCase()}`}
+                    @click=${() => {
+                this.openBrowseSurfaceForCurrentRoute();
+            }}
+                    type="button"
+                  >
+                    ${browseLabel}
+                  </button>
+                `
+            : html `<span class="write-breadcrumb" data-static="true"
+                  >${browseLabel}</span
+                >`}
+            <span class="write-status-separator" aria-hidden="true">/</span>
+            <span class="write-status-route">${routeDisplayLabel}</span>
+            <span class="summary-pill"
+              >${labelForWorkflowState(currentState)}</span
+            >
           </div>
           <p class="write-status-message">${statusCopy}</p>
-          ${this.renderSessionAuthSummary("status")}
         </div>
 
         <div class="write-status-actions">
-          ${!browseVisible
-            ? html `
-                <button
-                  class="action-button"
-                  aria-label="Browse content"
-                  data-variant="quiet"
-                  @click=${() => {
-                this.openBrowseSurfaceForCurrentRoute();
-            }}
-                  type="button"
-                >
-                  Browse content
-                </button>
-              `
-            : null}
           ${showSiteOpenAction
             ? html `
                 <button
@@ -4879,12 +5581,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             ? "Hide workspace context"
             : "Show workspace context"}
             data-variant="quiet"
-            @click=${() => {
-            this.workspacePanelOpen = !this.workspacePanelOpen;
-        }}
+            @click=${this.toggleWorkspacePanel}
             type="button"
           >
-            ${this.workspacePanelOpen ? "Hide workspace" : "Workspace"}
+            ${this.workspacePanelOpen ? "Hide context" : "Context"}
           </button>
           ${showMetadataEditor
             ? html `
@@ -4895,12 +5595,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 : "Show page settings"}
                   data-variant="quiet"
                   ?disabled=${!canWriteCurrentRoute}
-                  @click=${() => {
-                this.metadataPanelOpen = !this.metadataPanelOpen;
-            }}
+                  @click=${this.toggleMetadataPanel}
                   type="button"
                 >
-                  ${this.metadataPanelOpen ? "Hide settings" : "Page settings"}
+                  ${this.metadataPanelOpen ? "Hide settings" : "Settings"}
                 </button>
               `
             : null}
@@ -4962,16 +5660,21 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   autocomplete="off"
                   data-field="title"
                   ?disabled=${!canWriteCurrentRoute}
-                  placeholder=${selectedEntry?.kind === "doc_page" ? "Page title" : "Post title"}
+                  placeholder=${selectedEntry?.kind === "doc_page"
+                ? "Page title"
+                : "Post title"}
                   .value=${this.documentTitle}
                   @input=${this.handleMetadataInput}
                   @keydown=${this.handleCanvasTitleKeydown}
                 />
               `
             : html `
-                <h2 class="section-title">${selectedEntry?.title ?? this.workspace.profile.title}</h2>
+                <h2 class="section-title">
+                  ${selectedEntry?.title ?? this.workspace.profile.title}
+                </h2>
                 <p class="canvas-copy">
-                  Structured content stays canonical in JSON, but the editing experience remains editorial instead of raw-model-first.
+                  Structured content stays canonical in JSON, but the editing
+                  experience remains editorial instead of raw-model-first.
                 </p>
               `}
         </section>
@@ -4983,9 +5686,13 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 editor-label="Publishing document editor"
                 editor-testid="publishing-document-editor"
                 .adapter=${this.editorAdapter}
+                .editorKind=${this.editorKind}
+                .documentIdentity=${this.selectedRoute ?? ""}
                 .dirty=${this.draftDirty.value}
                 .insertPaletteOpen=${this.editorInsertPaletteOpen}
+                .mediaAssets=${this.getFeatureMediaOptions()}
                 .readOnly=${!canWriteCurrentRoute}
+                .externalSyncGeneration=${this.editorExternalSyncGeneration}
                 .value=${this.editorContent.value}
                 .placeholder=${selectedEntry?.kind === "doc_page"
                 ? "Begin writing your page..."
@@ -4996,6 +5703,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       </div>
     `;
     }
+    resetRouteScopedState(nextState = "draft") {
+        this.previewHtml = "";
+        this.previewExcerpt = "";
+        this.reviewDiffs = [];
+        this.validationIssues = [];
+        this.statusMessage = "";
+        this.syncReactiveState(() => {
+            this.synchronizeWorkflowState(nextState);
+        });
+    }
     renderFeatureMediaEntry(selectedEntry, canEdit) {
         if (!selectedEntry ||
             (selectedEntry.kind !== "post" && selectedEntry.kind !== "doc_page")) {
@@ -5004,10 +5721,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         const label = selectedEntry.kind === "post" ? "Feature image" : "Cover image";
         const mediaOptions = this.getFeatureMediaOptions();
         const currentAsset = mediaOptions.find((asset) => asset.path === this.documentFeatureImage);
-        const currentPreviewPath = currentAsset?.path ??
+        const currentPreviewPath = resolvePublishingStudioAssetPreviewPath(currentAsset?.path ??
             (this.documentFeatureImage.trim().length > 0
                 ? this.documentFeatureImage
-                : undefined);
+                : ""));
         return html `
       <div class="feature-media-entry" aria-label=${label}>
         <button
@@ -5016,9 +5733,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             ? `Change ${label.toLowerCase()}`
             : `Add ${label.toLowerCase()}`}
           ?disabled=${!canEdit}
-          @click=${() => {
-            this.featureMediaPickerOpen = !this.featureMediaPickerOpen;
-        }}
+          @click=${this.toggleFeatureMediaPicker}
           type="button"
         >
           <span class="feature-media-plus" aria-hidden="true">+</span>
@@ -5033,13 +5748,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 <img
                   alt=${`${label} preview`}
                   class="feature-media-thumb"
-                  src=${`/${currentPreviewPath.replace(/^\/+/, "")}`}
+                  src=${currentPreviewPath}
                 />
                 <span>${currentAsset?.label ?? this.documentFeatureImage}</span>
               </div>
             `
             : null}
-
         ${this.featureMediaPickerOpen
             ? html `
               <div class="feature-media-picker">
@@ -5053,7 +5767,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 ], !canEdit)
                 : html `
                       <p class="feature-media-empty">
-                        Add an image file to <code>content/media/</code> to use it here.
+                        Add an image file to <code>content/media/</code> to use
+                        it here.
                       </p>
                     `}
                 <div class="feature-media-picker-actions">
@@ -5094,7 +5809,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (!document) {
             return html `
         <section class="card">
-          <p class="empty-state">Structured content could not be loaded for this workspace item.</p>
+          <p class="empty-state">
+            Structured content could not be loaded for this workspace item.
+          </p>
         </section>
       `;
         }
@@ -5118,7 +5835,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.updateStructuredDocument({ ...document, language: value });
         })}
           ${this.renderStructuredTextField("Contact email", document.contactEmail, (value) => {
-            this.updateStructuredDocument({ ...document, contactEmail: value });
+            this.updateStructuredDocument({
+                ...document,
+                contactEmail: value,
+            });
         }, "email")}
           ${this.renderStructuredTextField("Theme color", document.themeColor ?? "", (value) => {
             this.updateStructuredDocument({
@@ -5127,10 +5847,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             });
         })}
           ${this.renderStructuredTextarea("Description", document.description, (value) => {
-            this.updateStructuredDocument({ ...document, description: value });
+            this.updateStructuredDocument({
+                ...document,
+                description: value,
+            });
         })}
           ${this.renderStructuredTextarea("Footer notice", document.footerNotice, (value) => {
-            this.updateStructuredDocument({ ...document, footerNotice: value });
+            this.updateStructuredDocument({
+                ...document,
+                footerNotice: value,
+            });
         })}
           ${this.renderStructuredTextField("SEO title", document.seo?.title ?? "", (value) => {
             this.updateStructuredDocument({
@@ -5174,7 +5900,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       <section class="card" aria-label="Homepage editor">
         <div class="field-grid">
           ${this.renderStructuredTextField("Eyebrow", document.heroEyebrow, (value) => {
-            this.updateStructuredDocument({ ...document, heroEyebrow: value });
+            this.updateStructuredDocument({
+                ...document,
+                heroEyebrow: value,
+            });
         })}
           ${this.renderStructuredTextField("Hero title", document.heroTitle, (value) => {
             this.updateStructuredDocument({ ...document, heroTitle: value });
@@ -5230,7 +5959,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         <div class="diff-header">
           <div>
             <h2 class="section-title">Hero metrics</h2>
-            <p class="section-copy">Short proof points for the landing page aside.</p>
+            <p class="section-copy">
+              Short proof points for the landing page aside.
+            </p>
           </div>
           <button
             class="action-button"
@@ -5254,12 +5985,20 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               <li class="card">
                 <div class="field-grid">
                   ${this.renderStructuredTextField("Label", metric.label, (value) => {
-            const nextMetrics = document.heroMetrics.map((entry, entryIndex) => entryIndex === index ? { ...entry, label: value } : entry);
-            this.updateStructuredDocument({ ...document, heroMetrics: nextMetrics });
+            const nextMetrics = document.heroMetrics.map((entry, entryIndex) => entryIndex === index
+                ? { ...entry, label: value }
+                : entry);
+            this.updateStructuredDocument({
+                ...document,
+                heroMetrics: nextMetrics,
+            });
         })}
                   ${this.renderStructuredTextField("Value", metric.value, (value) => {
             const nextMetrics = document.heroMetrics.map((entry, entryIndex) => entryIndex === index ? { ...entry, value } : entry);
-            this.updateStructuredDocument({ ...document, heroMetrics: nextMetrics });
+            this.updateStructuredDocument({
+                ...document,
+                heroMetrics: nextMetrics,
+            });
         })}
                 </div>
                 <button
@@ -5289,7 +6028,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
       <section class="card" aria-label=${title}>
         <div>
           <h2 class="section-title">${title}</h2>
-          <p class="section-copy">These links drive the homepage call-to-action area.</p>
+          <p class="section-copy">
+            These links drive the homepage call-to-action area.
+          </p>
         </div>
         <div class="field-grid">
           ${this.renderStructuredTextField("Label", link.label, (value) => {
@@ -5318,7 +6059,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         <div class="diff-header">
           <div>
             <h2 class="section-title">Feature blocks</h2>
-            <p class="section-copy">Editorial cards for the main platform story.</p>
+            <p class="section-copy">
+              Editorial cards for the main platform story.
+            </p>
           </div>
           <button
             class="action-button"
@@ -5357,13 +6100,17 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   ${this.renderStructuredTextField("Title", feature.title, (value) => {
             this.updateStructuredDocument({
                 ...document,
-                featureBlocks: document.featureBlocks.map((entry, entryIndex) => entryIndex === index ? { ...entry, title: value } : entry),
+                featureBlocks: document.featureBlocks.map((entry, entryIndex) => entryIndex === index
+                    ? { ...entry, title: value }
+                    : entry),
             });
         })}
                   ${this.renderStructuredTextarea("Body", feature.body, (value) => {
             this.updateStructuredDocument({
                 ...document,
-                featureBlocks: document.featureBlocks.map((entry, entryIndex) => entryIndex === index ? { ...entry, body: value } : entry),
+                featureBlocks: document.featureBlocks.map((entry, entryIndex) => entryIndex === index
+                    ? { ...entry, body: value }
+                    : entry),
             });
         })}
                   ${this.renderStructuredTextarea("Bullets (one per line)", feature.bullets.join("\n"), (value) => {
@@ -5410,7 +6157,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         <div class="diff-header">
           <div>
             <h2 class="section-title">Call to action blocks</h2>
-            <p class="section-copy">Secondary conversion blocks for the lower homepage.</p>
+            <p class="section-copy">
+              Secondary conversion blocks for the lower homepage.
+            </p>
           </div>
           <button
             class="action-button"
@@ -5449,27 +6198,37 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.updateStructuredDocument({
                 ...document,
                 ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index
-                    ? { ...entry, tone: value }
+                    ? {
+                        ...entry,
+                        tone: value,
+                    }
                     : entry),
             });
         })}
                   ${this.renderStructuredTextField("Title", cta.title, (value) => {
             this.updateStructuredDocument({
                 ...document,
-                ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index ? { ...entry, title: value } : entry),
+                ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index
+                    ? { ...entry, title: value }
+                    : entry),
             });
         })}
                   ${this.renderStructuredTextarea("Body", cta.body, (value) => {
             this.updateStructuredDocument({
                 ...document,
-                ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index ? { ...entry, body: value } : entry),
+                ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index
+                    ? { ...entry, body: value }
+                    : entry),
             });
         })}
                   ${this.renderStructuredTextField("Link label", cta.link.label, (value) => {
             this.updateStructuredDocument({
                 ...document,
                 ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index
-                    ? { ...entry, link: { ...entry.link, label: value } }
+                    ? {
+                        ...entry,
+                        link: { ...entry.link, label: value },
+                    }
                     : entry),
             });
         })}
@@ -5477,7 +6236,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.updateStructuredDocument({
                 ...document,
                 ctaBlocks: document.ctaBlocks.map((entry, entryIndex) => entryIndex === index
-                    ? { ...entry, link: { ...entry.link, href: value } }
+                    ? {
+                        ...entry,
+                        link: { ...entry.link, href: value },
+                    }
                     : entry),
             });
         })}
@@ -5511,7 +6273,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         <div class="diff-header">
           <div>
             <h2 class="section-title">${title}</h2>
-            <p class="section-copy">Ordered publication links surfaced in the static shell.</p>
+            <p class="section-copy">
+              Ordered publication links surfaced in the static shell.
+            </p>
           </div>
           <button
             class="action-button"
@@ -5535,14 +6299,21 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
               <li class="card">
                 <div class="field-grid">
                   ${this.renderStructuredTextField("Label", link.label, (value) => {
-            onChange(links.map((entry, entryIndex) => entryIndex === index ? { ...entry, label: value } : entry));
+            onChange(links.map((entry, entryIndex) => entryIndex === index
+                ? { ...entry, label: value }
+                : entry));
         })}
                   ${this.renderStructuredTextField("Href", link.href, (value) => {
-            onChange(links.map((entry, entryIndex) => entryIndex === index ? { ...entry, href: value } : entry));
+            onChange(links.map((entry, entryIndex) => entryIndex === index
+                ? { ...entry, href: value }
+                : entry));
         })}
                   ${this.renderStructuredTextField("Description", link.description ?? "", (value) => {
             onChange(links.map((entry, entryIndex) => entryIndex === index
-                ? { ...entry, description: value.trim() || undefined }
+                ? {
+                    ...entry,
+                    description: value.trim() || undefined,
+                }
                 : entry));
         })}
                   ${this.renderStructuredToggle("External", link.external ?? false, (value) => {
@@ -5659,7 +6430,10 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <div>
             <p class="eyebrow">Preview</p>
             <h2 class="section-title">${title}</h2>
-            <p class="section-copy">Rendered through the same local publishing model the static build will consume.</p>
+            <p class="section-copy">
+              Rendered through the same local publishing model the static build
+              will consume.
+            </p>
           </div>
           <button
             class="action-button"
@@ -5672,12 +6446,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           </button>
         </div>
         ${this.previewExcerpt.length > 0
-            ? html `<div class="summary-pill">Excerpt: ${this.previewExcerpt}</div>`
+            ? html `<div class="summary-pill">
+              Excerpt: ${this.previewExcerpt}
+            </div>`
             : null}
         <div class="preview-frame">
           ${this.previewHtml.length > 0
             ? unsafeHTML(this.previewHtml)
-            : html `<p class="empty-state">Generate a preview to inspect the current draft.</p>`}
+            : html `<p class="empty-state">
+                Generate a preview to inspect the current draft.
+              </p>`}
         </div>
       </section>
     `;
@@ -5689,11 +6467,16 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
           <div>
             <p class="eyebrow">Review</p>
             <h2 class="section-title">Canonical diff</h2>
-            <p class="section-copy">Validation, route impact, and file changes are staged here before a write.</p>
+            <p class="section-copy">
+              Validation, route impact, and file changes are staged here before
+              a write.
+            </p>
           </div>
           <div class="summary-grid">
             <span class="summary-pill">Diffs: ${this.reviewDiffs.length}</span>
-            <span class="summary-pill">Issues: ${this.validationIssues.length}</span>
+            <span class="summary-pill"
+              >Issues: ${this.validationIssues.length}</span
+            >
           </div>
         </div>
         ${this.validationIssues.length > 0
@@ -5702,7 +6485,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 <div class="diff-header">
                   <div>
                     <p class="eyebrow">Validation</p>
-                    <h3 class="section-title">Resolve blocking issues before publish</h3>
+                    <h3 class="section-title">
+                      Resolve blocking issues before publish
+                    </h3>
                   </div>
                 </div>
                 <ul class="issue-list" aria-live="polite">
@@ -5725,7 +6510,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                       <div class="diff-columns">
                         <div class="diff-frame">
                           <span class="metadata-label">Before</span>
-                          <pre class="diff-code">${diff.before || "New file"}</pre>
+                          <pre class="diff-code">
+${diff.before || "New file"}</pre
+                          >
                         </div>
                         <div class="diff-frame">
                           <span class="metadata-label">After</span>
@@ -5736,7 +6523,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                   `)}
               </ul>
             `
-            : html `<p class="empty-state">Run “Review Publish” to inspect the canonical diff.</p>`}
+            : html `<p class="empty-state">
+              Run “Review Publish” to inspect the canonical diff.
+            </p>`}
       </section>
     `;
     }
@@ -5754,7 +6543,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         </div>
         <div class="summary-grid">
           <span class="summary-pill">Changes: ${this.reviewDiffs.length}</span>
-          <span class="summary-pill">Mode: ${labelForWorkspaceMode(this.workspaceMode)}</span>
+          <span class="summary-pill"
+            >Mode: ${labelForWorkspaceMode(this.workspaceMode)}</span
+          >
         </div>
         ${this.reviewDiffs.length > 0
             ? html `
@@ -5846,7 +6637,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     getStructuredDocument() {
         const kind = this.entries.find((entry) => entry.route === this.selectedRoute)?.kind;
-        if (!kind || (kind !== "site_settings" && kind !== "navigation" && kind !== "homepage")) {
+        if (!kind ||
+            (kind !== "site_settings" && kind !== "navigation" && kind !== "homepage")) {
             return null;
         }
         try {
@@ -5887,7 +6679,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (this.hasCapability("content:publish:write")) {
             return "Publisher";
         }
-        if (this.hasCapability("content:draft:write") || this.hasCapability("content:config:write")) {
+        if (this.hasCapability("content:draft:write") ||
+            this.hasCapability("content:config:write")) {
             return "Editor";
         }
         return "Viewer";
@@ -5955,7 +6748,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 !this.hasCapability("content:draft:write")) {
                 return "Creating new drafts requires editor access.";
             }
-            if (this.browseSurface === "settings" && !this.hasCapability("content:config:write")) {
+            if (this.browseSurface === "settings" &&
+                !this.hasCapability("content:config:write")) {
                 return "Settings are view-only in this session.";
             }
             return null;
@@ -5968,16 +6762,20 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             }
             return "This draft is read-only in this session.";
         }
-        if (this.workflowState === "publish-confirmation" && !this.hasCapability("content:publish:write")) {
+        if (this.workflowState === "publish-confirmation" &&
+            !this.hasCapability("content:publish:write")) {
             return "Publishing requires publisher access.";
         }
-        if (!this.hasCapability("content:review:read") && this.hasCapability("content:preview:read")) {
+        if (!this.hasCapability("content:review:read") &&
+            this.hasCapability("content:preview:read")) {
             return "Publish review requires reviewer access.";
         }
-        if (!this.hasCapability("content:preview:read") && !this.hasCapability("content:review:read")) {
+        if (!this.hasCapability("content:preview:read") &&
+            !this.hasCapability("content:review:read")) {
             return "Preview and review are unavailable in this session.";
         }
-        if (!this.hasCapability("content:publish:write") && this.hasCapability("content:review:read")) {
+        if (!this.hasCapability("content:publish:write") &&
+            this.hasCapability("content:review:read")) {
             return "Publishing requires publisher access.";
         }
         return null;
@@ -5985,8 +6783,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     renderSessionAccessBadges(layout) {
         return html `
       <div class="session-auth-badges" data-layout=${layout}>
-        <span class="summary-pill" data-session-pill="role">${this.getSessionRoleLabel()}</span>
-        <span class="summary-pill" data-session-pill="access">${this.getSessionAccessCue()}</span>
+        <span class="summary-pill" data-session-pill="role"
+          >${this.getSessionRoleLabel()}</span
+        >
+        <span class="summary-pill" data-session-pill="access"
+          >${this.getSessionAccessCue()}</span
+        >
       </div>
     `;
     }
@@ -5994,13 +6796,23 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         const note = this.getSessionAccessNote();
         const visibleNote = note === this.statusMessage ? null : note;
         return html `
-      <div class="session-auth-summary" data-layout=${layout} data-parity-region="session-auth-summary">
+      <div
+        class="session-auth-summary"
+        data-layout=${layout}
+        data-parity-region="session-auth-summary"
+      >
         <p class="session-auth-name">${this.getSessionIdentityLabel()}</p>
         <div class="session-auth-badges">
-          <span class="summary-pill" data-session-pill="role">${this.getSessionRoleLabel()}</span>
-          <span class="summary-pill" data-session-pill="access">${this.getSessionAccessCue()}</span>
+          <span class="summary-pill" data-session-pill="role"
+            >${this.getSessionRoleLabel()}</span
+          >
+          <span class="summary-pill" data-session-pill="access"
+            >${this.getSessionAccessCue()}</span
+          >
         </div>
-        ${visibleNote ? html `<p class="session-auth-note">${visibleNote}</p>` : null}
+        ${visibleNote
+            ? html `<p class="session-auth-note">${visibleNote}</p>`
+            : null}
       </div>
     `;
     }
@@ -6029,7 +6841,7 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         };
     }
     getSelectedEntryKind() {
-        return this.getSelectedEntry()?.kind ?? this.inferSelectedEntryKindFromRoute();
+        return (this.getSelectedEntry()?.kind ?? this.inferSelectedEntryKindFromRoute());
     }
     inferSelectedEntryKindFromRoute() {
         if (this.selectedRoute === "/") {
@@ -6056,7 +6868,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (!kind) {
             return false;
         }
-        if (kind === "homepage" || kind === "site_settings" || kind === "navigation") {
+        if (kind === "homepage" ||
+            kind === "site_settings" ||
+            kind === "navigation") {
             return this.hasCapability("content:config:write");
         }
         if (kind === "post" || kind === "doc_page") {
@@ -6072,7 +6886,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             this.hasCapability("content:preview:read"));
     }
     getFeatureMediaOptions() {
-        return this.media.filter((asset) => asset.mimeType?.startsWith("image/") ?? /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(asset.path));
+        return this.media.filter((asset) => asset.mimeType?.startsWith("image/") ??
+            /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(asset.path));
     }
     reportCapabilityBlock(message) {
         this.statusMessage = message;
@@ -6250,7 +7065,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         this.accountPopoverOpen = false;
         this.searchOverlayOpen = true;
         this.searchOverlayQuery = "";
-        this.statusMessage = "Quick-open is ready. Search routes or start a new draft.";
+        this.statusMessage =
+            "Quick-open is ready. Search routes or start a new draft.";
         void this.updateComplete.then(() => {
             this.searchOverlayInput?.focus();
             this.searchOverlayInput?.select();
@@ -6336,7 +7152,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (query.length === 0) {
             return combined.slice(0, 8);
         }
-        return combined.filter((option) => `${option.title} ${option.detail} ${option.badge}`.toLowerCase().includes(query));
+        return combined.filter((option) => `${option.title} ${option.detail} ${option.badge}`
+            .toLowerCase()
+            .includes(query));
     }
     requestOpenSite(source) {
         this.accountPopoverOpen = false;
@@ -6441,14 +7259,18 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         this.browseSurface = surface;
         this.placeholderTitle = "";
         this.postsFilter = nextPostsFilter;
-        this.postsAccessFilter = surface === "posts" ? this.postsAccessFilter : "all";
-        this.pagesAccessFilter = surface === "pages" ? this.pagesAccessFilter : "all";
+        this.postsAccessFilter =
+            surface === "posts" ? this.postsAccessFilter : "all";
+        this.pagesAccessFilter =
+            surface === "pages" ? this.pagesAccessFilter : "all";
         this.postsAuthorFilter =
             surface === "posts" ? this.postsAuthorFilter : ALL_AUTHORS_FILTER_VALUE;
         this.pagesAuthorFilter =
             surface === "pages" ? this.pagesAuthorFilter : ALL_AUTHORS_FILTER_VALUE;
-        this.postsTagFilter = surface === "posts" ? this.postsTagFilter : ALL_TAGS_FILTER_VALUE;
-        this.pagesTagFilter = surface === "pages" ? this.pagesTagFilter : ALL_TAGS_FILTER_VALUE;
+        this.postsTagFilter =
+            surface === "posts" ? this.postsTagFilter : ALL_TAGS_FILTER_VALUE;
+        this.pagesTagFilter =
+            surface === "pages" ? this.pagesTagFilter : ALL_TAGS_FILTER_VALUE;
         if (surface === "dashboard" ||
             surface === "posts" ||
             surface === "pages" ||
@@ -6485,9 +7307,30 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         return { surface: "settings" };
     }
     normalizeRouteBackedPostsFilter(filter) {
-        return filter === "all"
+        return filter === "all" ? DEFAULT_PUBLISHING_STUDIO_POSTS_BUCKET : filter;
+    }
+    getCurrentPostsBucket() {
+        return this.postsFilter === "all"
             ? DEFAULT_PUBLISHING_STUDIO_POSTS_BUCKET
-            : filter;
+            : this.postsFilter;
+    }
+    getPostsBucketIndex(bucket = this.getCurrentPostsBucket()) {
+        return PUBLISHING_STUDIO_POST_BUCKETS.indexOf(bucket);
+    }
+    labelForPostBucket(bucket, count) {
+        const label = bucket === "draft"
+            ? "Draft"
+            : bucket === "scheduled"
+                ? "Scheduled"
+                : "Published";
+        return typeof count === "number" ? `${label} (${count})` : label;
+    }
+    buildPostBucketTabs(entries) {
+        const now = Date.now();
+        return PUBLISHING_STUDIO_POST_BUCKETS.map((bucket) => ({
+            bucket,
+            count: entries.filter((entry) => publishingStudioPostsBucketForEntry(entry, now) === bucket).length,
+        }));
     }
     hasActiveSecondaryFilters(surface) {
         if (surface === "posts") {
@@ -6587,7 +7430,6 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
             return;
         }
         if (this.browseSurface === "posts") {
-            this.synchronizeCollectionControlValue("Posts status filter", this.postsFilter);
             this.synchronizeCollectionControlValue("Posts access filter", this.postsAccessFilter);
             this.synchronizeCollectionControlValue("Posts author filter", this.postsAuthorFilter);
             this.synchronizeCollectionControlValue("Posts tag filter", this.postsTagFilter);
@@ -6603,11 +7445,11 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         }
     }
     synchronizeCollectionControlValue(label, value) {
-        const select = this.renderRoot.querySelector(`select[aria-label=\"${label}\"]`);
-        if (!select || select.value === value) {
+        const control = this.renderRoot.querySelector(`[aria-label=\"${label}\"]`);
+        if (!control || control.value === value) {
             return;
         }
-        select.value = value;
+        control.value = value;
     }
     syncReactiveState(callback) {
         this.suppressReactiveRequest = true;
@@ -6649,9 +7491,9 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
                 entry.sectionTitle?.toLowerCase().includes(normalized));
         });
     }
-    filterPostEntries(entries) {
+    filterPostEntries(entries, filter = this.postsFilter) {
         const now = Date.now();
-        switch (this.postsFilter) {
+        switch (filter) {
             case "draft":
                 return entries.filter((entry) => publishingStudioPostsBucketForEntry(entry, now) === "draft");
             case "scheduled":
@@ -6676,7 +7518,8 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
         if (!normalizedFilter) {
             return entries;
         }
-        return entries.filter((entry) => normalizeAuthorValue(entry.authorName)?.toLowerCase() === normalizedFilter.toLowerCase());
+        return entries.filter((entry) => normalizeAuthorValue(entry.authorName)?.toLowerCase() ===
+            normalizedFilter.toLowerCase());
     }
     filterEntriesByTag(entries, filter) {
         if (filter === ALL_TAGS_FILTER_VALUE) {
@@ -6731,8 +7574,12 @@ let KitPublishingStudio = class KitPublishingStudio extends PublishingElement {
     }
     sortEntries(entries) {
         return [...entries].sort((left, right) => {
-            const leftTime = left.publishedAt ? new Date(left.publishedAt).getTime() : 0;
-            const rightTime = right.publishedAt ? new Date(right.publishedAt).getTime() : 0;
+            const leftTime = left.publishedAt
+                ? new Date(left.publishedAt).getTime()
+                : 0;
+            const rightTime = right.publishedAt
+                ? new Date(right.publishedAt).getTime()
+                : 0;
             return rightTime - leftTime;
         });
     }
@@ -6883,6 +7730,9 @@ __decorate([
     property({ attribute: false })
 ], KitPublishingStudio.prototype, "editorAdapter", void 0);
 __decorate([
+    property({ attribute: "editor-kind" })
+], KitPublishingStudio.prototype, "editorKind", void 0);
+__decorate([
     property({ type: Boolean, attribute: "editor-insert-palette-open" })
 ], KitPublishingStudio.prototype, "editorInsertPaletteOpen", void 0);
 __decorate([
@@ -6935,6 +7785,9 @@ __decorate([
 ], KitPublishingStudio.prototype, "session", void 0);
 __decorate([
     state()
+], KitPublishingStudio.prototype, "editorExternalSyncGeneration", void 0);
+__decorate([
+    state()
 ], KitPublishingStudio.prototype, "searchOverlayQuery", void 0);
 __decorate([
     state()
@@ -6984,6 +7837,9 @@ __decorate([
 __decorate([
     query("kit-publishing-editor-surface")
 ], KitPublishingStudio.prototype, "editorSurface", void 0);
+__decorate([
+    query(".feature-media-entry")
+], KitPublishingStudio.prototype, "featureMediaEntry", void 0);
 __decorate([
     query(".search-overlay-input")
 ], KitPublishingStudio.prototype, "searchOverlayInput", void 0);
@@ -7047,7 +7903,10 @@ const collectionSortOptions = [
     { value: "title-desc", label: "Title Z-A" },
 ];
 function isGhostPostFilter(value) {
-    return value === "all" || value === "draft" || value === "scheduled" || value === "published";
+    return (value === "all" ||
+        value === "draft" ||
+        value === "scheduled" ||
+        value === "published");
 }
 function isGhostAccessFilter(value) {
     return (value === "all" ||
@@ -7094,7 +7953,9 @@ function summarizePublishingTags(entries) {
             if (!label) {
                 continue;
             }
-            const visibility = rawTag.trim().startsWith("#")
+            const visibility = rawTag
+                .trim()
+                .startsWith("#")
                 ? "internal"
                 : "public";
             const key = `${visibility}:${slugForTagLabel(label)}`;
@@ -7119,7 +7980,9 @@ function summarizePublishingTags(entries) {
                 uses: (current?.uses ?? 0) + 1,
                 postCount: (current?.postCount ?? 0) + (entry.kind === "post" ? 1 : 0),
                 pageCount: (current?.pageCount ?? 0) + (entry.kind === "doc_page" ? 1 : 0),
-                ...(nextLastPublishedAt ? { lastPublishedAt: nextLastPublishedAt } : {}),
+                ...(nextLastPublishedAt
+                    ? { lastPublishedAt: nextLastPublishedAt }
+                    : {}),
                 ...(nextLastPublishedAtTimestamp
                     ? { lastPublishedAtTimestamp: nextLastPublishedAtTimestamp }
                     : {}),
@@ -7158,7 +8021,9 @@ function createPublishingTagRecord(summary, document) {
         uses: summary?.uses ?? 0,
         postCount: summary?.postCount ?? 0,
         pageCount: summary?.pageCount ?? 0,
-        ...(summary?.lastPublishedAt ? { lastPublishedAt: summary.lastPublishedAt } : {}),
+        ...(summary?.lastPublishedAt
+            ? { lastPublishedAt: summary.lastPublishedAt }
+            : {}),
         sourceSlug: slug,
         slugEdited: slug !== slugForTagLabel(label),
     };
@@ -7250,7 +8115,8 @@ function documentForPublishingTagRecord(record) {
         visibility: record.visibility,
         color: normalizeTagColor(record.color),
         featureImage: record.featureImage.trim() || undefined,
-        seo: record.seoTitle.trim().length > 0 || record.seoDescription.trim().length > 0
+        seo: record.seoTitle.trim().length > 0 ||
+            record.seoDescription.trim().length > 0
             ? {
                 title: record.seoTitle.trim() || undefined,
                 description: record.seoDescription.trim() || undefined,
@@ -7270,17 +8136,13 @@ function tagKey(visibility, slug) {
 function findPublishingTagSummary(entries, document) {
     const visibility = document.visibility ?? "public";
     const slug = slugForTagLabel(document.slug) || "tag";
-    return summarizePublishingTags(entries).find((summary) => tagKey(summary.visibility, slugForTagLabel(summary.label) || "tag") === tagKey(visibility, slug));
-}
-function resolveTagImagePreviewPath(value) {
-    const normalized = value.trim();
-    if (normalized.length === 0) {
-        return undefined;
-    }
-    return `/${normalized.replace(/^\/+/, "")}`;
+    return summarizePublishingTags(entries).find((summary) => tagKey(summary.visibility, slugForTagLabel(summary.label) || "tag") ===
+        tagKey(visibility, slug));
 }
 function comparePublishingEntryTimestamp(entry) {
-    const timestamp = entry.publishedAt ? new Date(entry.publishedAt).getTime() : 0;
+    const timestamp = entry.publishedAt
+        ? new Date(entry.publishedAt).getTime()
+        : 0;
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
 function resolvePublicationLicenseSession(license) {
@@ -7290,12 +8152,16 @@ function resolvePublicationLicenseSession(license) {
         mode: license?.mode ?? DEFAULT_PUBLICATION_LICENSE_SESSION.mode,
         evaluation: license?.evaluation ?? DEFAULT_PUBLICATION_LICENSE_SESSION.evaluation,
         sessionState: license?.sessionState ?? DEFAULT_PUBLICATION_LICENSE_SESSION.sessionState,
-        grantedBundleIds: license?.grantedBundleIds ?? DEFAULT_PUBLICATION_LICENSE_SESSION.grantedBundleIds,
+        grantedBundleIds: license?.grantedBundleIds ??
+            DEFAULT_PUBLICATION_LICENSE_SESSION.grantedBundleIds,
         grantedCapabilityIds: license?.grantedCapabilityIds ??
             DEFAULT_PUBLICATION_LICENSE_SESSION.grantedCapabilityIds,
-        mappedCapabilities: license?.mappedCapabilities ?? DEFAULT_PUBLICATION_LICENSE_SESSION.mappedCapabilities,
-        matchedTierIds: license?.matchedTierIds ?? DEFAULT_PUBLICATION_LICENSE_SESSION.matchedTierIds,
-        matchedPartnerIds: license?.matchedPartnerIds ?? DEFAULT_PUBLICATION_LICENSE_SESSION.matchedPartnerIds,
+        mappedCapabilities: license?.mappedCapabilities ??
+            DEFAULT_PUBLICATION_LICENSE_SESSION.mappedCapabilities,
+        matchedTierIds: license?.matchedTierIds ??
+            DEFAULT_PUBLICATION_LICENSE_SESSION.matchedTierIds,
+        matchedPartnerIds: license?.matchedPartnerIds ??
+            DEFAULT_PUBLICATION_LICENSE_SESSION.matchedPartnerIds,
         sources: license?.sources ?? DEFAULT_PUBLICATION_LICENSE_SESSION.sources,
     };
 }
@@ -7317,47 +8183,90 @@ function publicationBrandInitial(value) {
 function renderGhostShellIcon(icon) {
     switch (icon) {
         case "search":
-            return svgIcon(html `<circle cx="7.25" cy="7.25" r="4.5"></circle><path d="M10.8 10.8 14 14"></path>`);
+            return svgIcon(html `<circle cx="7.25" cy="7.25" r="4.5"></circle
+          ><path d="M10.8 10.8 14 14"></path>`);
         case "dashboard":
-            return svgIcon(html `<path d="M3 6.2 8 2l5 4.2"></path><path d="M4.5 5.7v7h7v-7"></path>`);
+            return svgIcon(html `<path d="M3 6.2 8 2l5 4.2"></path
+          ><path d="M4.5 5.7v7h7v-7"></path>`);
         case "external":
-            return svgIcon(html `<path d="M2.5 3.5h11v9h-11z"></path><path d="M2.5 7.9h11"></path><path d="M6.4 3.5v9"></path>`);
+            return svgIcon(html `<path d="M2.5 3.5h11v9h-11z"></path><path d="M2.5 7.9h11"></path
+          ><path d="M6.4 3.5v9"></path>`);
         case "posts":
-            return svgIcon(html `<path d="M3.3 11.8h6.9"></path><path d="M4.5 11.8V5.2"></path><path d="M10.5 3.5h2v8.3h-8"></path><path d="M9 3.5H4.5v8.3"></path>`);
+            return svgIcon(html `<path d="M3.3 11.8h6.9"></path><path d="M4.5 11.8V5.2"></path
+          ><path d="M10.5 3.5h2v8.3h-8"></path
+          ><path d="M9 3.5H4.5v8.3"></path>`);
         case "pages":
-            return svgIcon(html `<path d="M4 2.8h6.3L13 5.5v7.7H6.7L4 10.5z"></path><path d="M10.3 2.8v2.7H13"></path>`);
+            return svgIcon(html `<path d="M4 2.8h6.3L13 5.5v7.7H6.7L4 10.5z"></path
+          ><path d="M10.3 2.8v2.7H13"></path>`);
         case "tags":
-            return svgIcon(html `<path d="M3 7.2V3.5h3.7l5.8 5.8-3.7 3.7z"></path><circle cx="5.4" cy="5.5" r="0.8" fill="currentColor" stroke="none"></circle>`);
+            return svgIcon(html `<path d="M3 7.2V3.5h3.7l5.8 5.8-3.7 3.7z"></path
+          ><circle
+            cx="5.4"
+            cy="5.5"
+            r="0.8"
+            fill="currentColor"
+            stroke="none"
+          ></circle>`);
         case "members":
-            return svgIcon(html `<circle cx="5.5" cy="6" r="2.2"></circle><circle cx="10.7" cy="6.8" r="1.8"></circle><path d="M2.8 12.7c.5-1.8 1.9-3 4-3 2.2 0 3.7 1.2 4.2 3"></path>`);
+            return svgIcon(html `<circle cx="5.5" cy="6" r="2.2"></circle
+          ><circle cx="10.7" cy="6.8" r="1.8"></circle
+          ><path d="M2.8 12.7c.5-1.8 1.9-3 4-3 2.2 0 3.7 1.2 4.2 3"></path>`);
         case "settings":
-            return svgIcon(html `<circle cx="8" cy="8" r="2.3"></circle><path d="M8 2.6v1.6"></path><path d="M8 11.8v1.6"></path><path d="m4.2 4.2 1.1 1.1"></path><path d="m10.7 10.7 1.1 1.1"></path><path d="M2.6 8h1.6"></path><path d="M11.8 8h1.6"></path><path d="m4.2 11.8 1.1-1.1"></path><path d="m10.7 5.3 1.1-1.1"></path>`);
+            return svgIcon(html `<circle cx="8" cy="8" r="2.3"></circle><path d="M8 2.6v1.6"></path
+          ><path d="M8 11.8v1.6"></path><path d="m4.2 4.2 1.1 1.1"></path
+          ><path d="m10.7 10.7 1.1 1.1"></path><path d="M2.6 8h1.6"></path
+          ><path d="M11.8 8h1.6"></path><path d="m4.2 11.8 1.1-1.1"></path
+          ><path d="m10.7 5.3 1.1-1.1"></path>`);
         case "chevron-down":
             return svgIcon(html `<path d="m4.1 6.2 3.9 3.9 3.9-3.9"></path>`);
         case "chevron-right":
             return svgIcon(html `<path d="m6.1 4.1 3.9 3.9-3.9 3.9"></path>`);
         case "design":
-            return svgIcon(html `<path d="M4.2 11.8 11.8 4.2"></path><path d="m7.1 3.4 5.5 5.5"></path><path d="m4.2 11.8-.8 2.3 2.3-.8"></path>`);
+            return svgIcon(html `<path d="M4.2 11.8 11.8 4.2"></path
+          ><path d="m7.1 3.4 5.5 5.5"></path
+          ><path d="m4.2 11.8-.8 2.3 2.3-.8"></path>`);
         case "navigation":
-            return svgIcon(html `<circle cx="8" cy="8" r="5.6"></circle><path d="m6.1 7.1 4.3-1.8-1.8 4.3-1.1-1.1z"></path>`);
+            return svgIcon(html `<circle cx="8" cy="8" r="5.6"></circle
+          ><path d="m6.1 7.1 4.3-1.8-1.8 4.3-1.1-1.1z"></path>`);
         case "staff":
-            return svgIcon(html `<circle cx="6.1" cy="5.3" r="2"></circle><path d="M2.9 12.6c.4-1.7 1.8-2.8 3.7-2.8"></path><path d="M10.2 4.3c1.3.2 2.3 1.2 2.5 2.5"></path><path d="M9.6 10.1c1.4.3 2.5 1.2 3 2.5"></path>`);
+            return svgIcon(html `<circle cx="6.1" cy="5.3" r="2"></circle
+          ><path d="M2.9 12.6c.4-1.7 1.8-2.8 3.7-2.8"></path
+          ><path d="M10.2 4.3c1.3.2 2.3 1.2 2.5 2.5"></path
+          ><path d="M9.6 10.1c1.4.3 2.5 1.2 3 2.5"></path>`);
         case "membership":
-            return svgIcon(html `<circle cx="5.2" cy="6.1" r="2.1"></circle><circle cx="10.6" cy="6.1" r="2.1"></circle><path d="M2.7 12.4c.4-1.7 1.8-2.8 3.9-2.8"></path><path d="M9.5 9.6c2.1 0 3.5 1.1 3.9 2.8"></path>`);
+            return svgIcon(html `<circle cx="5.2" cy="6.1" r="2.1"></circle
+          ><circle cx="10.6" cy="6.1" r="2.1"></circle
+          ><path d="M2.7 12.4c.4-1.7 1.8-2.8 3.9-2.8"></path
+          ><path d="M9.5 9.6c2.1 0 3.5 1.1 3.9 2.8"></path>`);
         case "newsletter":
-            return svgIcon(html `<path d="M2.8 4.2h10.4v7.6H2.8z"></path><path d="m3.3 4.8 4.7 3.7 4.7-3.7"></path>`);
+            return svgIcon(html `<path d="M2.8 4.2h10.4v7.6H2.8z"></path
+          ><path d="m3.3 4.8 4.7 3.7 4.7-3.7"></path>`);
         case "integrations":
-            return svgIcon(html `<path d="M8 2.8 12.5 5.3v5L8 12.8l-4.5-2.5v-5z"></path><path d="M3.5 5.3 8 7.8l4.5-2.5"></path>`);
+            return svgIcon(html `<path d="M8 2.8 12.5 5.3v5L8 12.8l-4.5-2.5v-5z"></path
+          ><path d="M3.5 5.3 8 7.8l4.5-2.5"></path>`);
         case "code":
-            return svgIcon(html `<path d="m5.8 4.1-3.2 3.8 3.2 3.8"></path><path d="m10.2 4.1 3.2 3.8-3.2 3.8"></path>`);
+            return svgIcon(html `<path d="m5.8 4.1-3.2 3.8 3.2 3.8"></path
+          ><path d="m10.2 4.1 3.2 3.8-3.2 3.8"></path>`);
         case "labs":
-            return svgIcon(html `<path d="M6 2.8h4"></path><path d="M7 2.8v3.1l-3.2 5.5a1.6 1.6 0 0 0 1.4 2.4h5.6a1.6 1.6 0 0 0 1.4-2.4L9 5.9V2.8"></path><path d="M5.8 10.1h4.4"></path>`);
+            return svgIcon(html `<path d="M6 2.8h4"></path
+          ><path
+            d="M7 2.8v3.1l-3.2 5.5a1.6 1.6 0 0 0 1.4 2.4h5.6a1.6 1.6 0 0 0 1.4-2.4L9 5.9V2.8"
+          ></path
+          ><path d="M5.8 10.1h4.4"></path>`);
         case "theme-sun":
-            return svgIcon(html `<circle cx="8" cy="8" r="2.5"></circle><path d="M8 1.8v1.7"></path><path d="M8 12.5v1.7"></path><path d="m3.6 3.6 1.2 1.2"></path><path d="m11.2 11.2 1.2 1.2"></path><path d="M1.8 8h1.7"></path><path d="M12.5 8h1.7"></path><path d="m3.6 12.4 1.2-1.2"></path><path d="m11.2 4.8 1.2-1.2"></path>`);
+            return svgIcon(html `<circle cx="8" cy="8" r="2.5"></circle><path d="M8 1.8v1.7"></path
+          ><path d="M8 12.5v1.7"></path><path d="m3.6 3.6 1.2 1.2"></path
+          ><path d="m11.2 11.2 1.2 1.2"></path><path d="M1.8 8h1.7"></path
+          ><path d="M12.5 8h1.7"></path><path d="m3.6 12.4 1.2-1.2"></path
+          ><path d="m11.2 4.8 1.2-1.2"></path>`);
         case "theme-moon":
-            return svgIcon(html `<path d="M10.9 2.8a5.3 5.3 0 1 0 2.3 9.9A5.9 5.9 0 0 1 10.9 2.8Z"></path>`);
+            return svgIcon(html `<path
+          d="M10.9 2.8a5.3 5.3 0 1 0 2.3 9.9A5.9 5.9 0 0 1 10.9 2.8Z"
+        ></path>`);
     }
 }
 function svgIcon(content) {
-    return html `<svg class="icon-svg" viewBox="0 0 16 16" aria-hidden="true">${content}</svg>`;
+    return html `<svg class="icon-svg" viewBox="0 0 16 16" aria-hidden="true">
+    ${content}
+  </svg>`;
 }

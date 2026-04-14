@@ -3,4 +3,5 @@
  *
  * @module @citadelfoundation/kit-publishing/studio/host/client
  */
-export {};
+import "../components/publishing_studio.js";
+import "../components/content/content-list.js";

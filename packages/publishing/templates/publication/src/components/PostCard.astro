@@ -1,0 +1,19 @@
+---
+import type { PostDocument } from "@citadelfoundation/kit-publishing/types";
+
+interface Props {
+  readonly post: PostDocument;
+}
+
+const { post } = Astro.props as Props;
+---
+
+<article class="content-card stack-gap">
+  <p class="eyebrow">Blog</p>
+  <h3><a href={`/blog/${post.slug}/`}>{post.title}</a></h3>
+  <p class="lede">{post.excerpt}</p>
+  <div class="card-meta">
+    <span>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : "Draft"}</span>
+    {post.tags.length > 0 && <span>{post.tags.join(" · ")}</span>}
+  </div>
+</article>

@@ -3,7 +3,7 @@
  *
  * @module @citadelfoundation/kit-publishing/studio/machines/studio_machine
  */
-import { createSignal, } from "../../internal/signal.js";
+import { createSignal } from "../../internal/signal.js";
 /**
  * Create the publishing studio workflow machine.
  */

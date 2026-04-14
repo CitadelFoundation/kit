@@ -1,0 +1,48 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getDocsSections, getNavigation, getSiteSettings } from "../../lib/publishing";
+
+const [siteSettings, navigation, sections] = await Promise.all([
+  getSiteSettings(),
+  getNavigation(),
+  getDocsSections()
+]);
+---
+
+<BaseLayout
+  pageTitle="Docs"
+  pageDescription="Documentation generated from canonical content."
+  siteSettings={siteSettings}
+  navigation={navigation}
+>
+  <section class="hero hero-compact">
+    <p class="eyebrow">Docs</p>
+    <h1>Documentation</h1>
+    <p class="lede hero-copy">Structured docs pages grouped by section.</p>
+  </section>
+
+  <section class="page-section">
+    {sections.length === 0 ? (
+      <article class="content-card stack-gap">
+        <h2>No docs yet</h2>
+        <p class="lede">
+          Add section JSON under content/docs/sections and markdown pages under content/docs/pages.
+        </p>
+      </article>
+    ) : (
+      <div class="section-grid">
+        {sections.map((section) => (
+          <article class="content-card stack-gap">
+            <p class="eyebrow">{section.title}</p>
+            <h2>{section.description ?? "Documentation section"}</h2>
+            <ul class="docs-link-list">
+              {section.pages.map((page) => (
+                <li><a href={`/docs/${page.slug}/`}>{page.title}</a></li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    )}
+  </section>
+</BaseLayout>

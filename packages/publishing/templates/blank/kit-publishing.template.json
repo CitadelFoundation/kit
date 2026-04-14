@@ -1,0 +1,9 @@
+{
+  "id": "blank",
+  "label": "Blank",
+  "summary": "A genuinely blank local-first site shell with quiet default routes and no seeded editorial homepage.",
+  "audience": "Developers shaping a docs, journal, or product site from scratch without inheriting launch copy or starter sections.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.1"
+}

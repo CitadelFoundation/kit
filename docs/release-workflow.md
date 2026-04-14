@@ -6,17 +6,17 @@ This repository contains generated public release artifacts only.
 
 - `main` is the stable public distribution branch.
 - `promote/*` is the public review lane for updates to `main`.
-- `release/kit-publishing-*` is the public publish lane for `@citadelfoundation/kit-publishing`.
+- `release/<lane>-*` is the publish lane for governed packages.
 
 ## Publishing
 
-Publishing is performed from `release/kit-publishing-*` branches through the generated GitHub Actions workflow at `.github/workflows/publish-kit-publishing.yml`.
+Publishing is performed from `release/<lane>-*` branches through the generated lane-specific GitHub Actions workflow.
+Each governed publishable lane has its own workflow file under `.github/workflows/`.
 
-The trusted-publishing relationship must remain attached to:
+The trusted-publishing relationship must remain attached per package:
 
 - repository: `CitadelFoundation/kit`
-- workflow file: `publish-kit-publishing.yml`
-- package: `@citadelfoundation/kit-publishing`
+- package-specific workflow file and package name
 
 Do not add source files, tests, or exploratory refs to this repository.
 

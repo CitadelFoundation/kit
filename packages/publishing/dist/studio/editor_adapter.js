@@ -3,5 +3,4 @@
  *
  * @module @citadelfoundation/kit-publishing/studio/editor_adapter
  */
-export { createPublishingCommandStateMap, createPublishingEditorMetrics, createPublishingEditorState, markdownEditorCommands, } from "./editor_contract.js";
-export { createPublishingTiptapEditorAdapter, createTiptapMarkdownEditorAdapter, } from "./tiptap_editor_adapter.js";
+export { createPublishingCommandStateMap, createPublishingEditorMetrics, createPublishingEditorState, createMarkdownEditorAdapter, markdownEditorCommands, } from "./editor_contract.js";

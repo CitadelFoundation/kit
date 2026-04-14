@@ -1,0 +1,8 @@
+{
+  "kind": "doc_section",
+  "id": "getting-started",
+  "title": "Getting Started",
+  "slug": "getting-started",
+  "description": "Set up the publication locally and understand the content model.",
+  "order": 1
+}

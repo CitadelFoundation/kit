@@ -3,13 +3,13 @@
  *
  * @module @citadelfoundation/kit-publishing/studio/host/client
  */
-import { KitPublishingStudio, } from "../components/publishing_studio.js";
-import { createPublishingTiptapEditorAdapter } from "../editor_adapter.js";
+import "../components/publishing_studio.js";
+import "../components/content/content-list.js";
+import { createMarkdownEditorAdapter } from "../editor_adapter.js";
 import { DEFAULT_PUBLISHING_STUDIO_POSTS_BUCKET, } from "../browse_state.js";
 import { slugifyPublishingValue } from "../../content/routes.js";
 import { hasPublicationCapability } from "../../workspace.js";
 import { PUBLISHING_STUDIO_SIGNIN_PATH, documentFromEditorValue, documentWithMetadata, editorValueForDocument, messageForPublishingStudioEntryGateReason, metadataForDocument, publishingStudioPathForBrowseSurface, publishingStudioProvidersForSignIn, publishingStudioPathForEditorRoute, resolvePublishingStudioEntryGate, resolvePublishingStudioPathTarget, resolvePublishingStudioSiteDestination, routeForDocument, routeToDraftId, sourcePathForDocument, validationIssuesForError, } from "./model.js";
-void KitPublishingStudio;
 const studio = getStudioElement();
 const authShell = getAuthShellElement();
 const STUDIO_ROUTE_HOMEPAGE = "/";
@@ -141,7 +141,8 @@ function installEventListeners() {
         await handleBrowseSurfaceSelection(detail);
     });
     studio.addEventListener("publishing-open-site", (event) => {
-        const detail = event.detail;
+        const detail = event
+            .detail;
         handleOpenSiteRequest(detail);
     });
     studio.addEventListener("publishing-create-draft", (event) => {
@@ -164,7 +165,8 @@ function installEventListeners() {
                 draftId,
             });
             await refreshIndex();
-            const savedTag = state.tags.find((tag) => tag.slug === detail.document.slug) ?? detail.document;
+            const savedTag = state.tags.find((tag) => tag.slug === detail.document.slug) ??
+                detail.document;
             studio.dispatchEvent(new CustomEvent("publishing-tag-saved", {
                 bubbles: true,
                 composed: true,
@@ -265,6 +267,34 @@ function installEventListeners() {
             studio.busy = false;
         }
     });
+    studio.addEventListener("publishing-duplicate-row", async (event) => {
+        const detail = event.detail;
+        studio.busy = true;
+        studio.statusMessage = "Creating duplicate draft…";
+        try {
+            const document = await fetchDocumentForRoute(detail.route);
+            if (!isDuplicateRouteDocument(document)) {
+                throw new Error("Only posts and docs pages can be duplicated.");
+            }
+            const duplicateDocument = createDuplicateDocument(document);
+            const draftId = routeToDraftId(routeForDocument(duplicateDocument));
+            await postApi("/api/drafts/create", {
+                draftId,
+                document: duplicateDocument,
+            });
+            applyRouteDocument(duplicateDocument, {
+                route: routeForDocument(duplicateDocument),
+                statusMessage: "Duplicate draft ready. Preview or review the diff before publish.",
+                persistLocation: false,
+            });
+        }
+        catch (error) {
+            handlePublishingError(error, "Duplicate failed.");
+        }
+        finally {
+            studio.busy = false;
+        }
+    });
     studio.addEventListener("publishing-request-validate", async () => {
         studio.busy = true;
         studio.workflowState = "validating";
@@ -347,14 +377,7 @@ function installEventListeners() {
     });
 }
 function resolveEditorAdapterFromLocation() {
-    const search = new URLSearchParams(window.location.search);
-    const requestedAdapter = search.get("editor");
-    switch (requestedAdapter) {
-        case "tiptap":
-            return createPublishingTiptapEditorAdapter();
-        default:
-            return createPublishingTiptapEditorAdapter();
-    }
+    return createMarkdownEditorAdapter();
 }
 async function refreshIndex() {
     const [entries, media, docSections, tags, siteSettings, navigation] = await Promise.all([
@@ -385,6 +408,7 @@ async function loadRoute(route, options) {
         route,
         statusMessage: options?.statusMessage ??
             "Draft loaded. Preview or review the diff before publish.",
+        preserveBrowseState: options?.preserveBrowseState,
         persistLocation: options?.persistLocation,
     });
 }
@@ -398,7 +422,35 @@ function loadNewDraft(kind) {
         persistLocation: false,
     });
 }
+function createDuplicateDocument(document) {
+    const source = document;
+    const title = `${source.title} (Copy)`;
+    const slug = createUniqueDraftSlug(title, source.kind);
+    if (source.kind === "post") {
+        const postDocument = document;
+        return {
+            ...postDocument,
+            title,
+            slug,
+            status: "draft",
+            publishedAt: undefined,
+        };
+    }
+    const docPageDocument = document;
+    return {
+        ...docPageDocument,
+        title,
+        slug,
+        status: "draft",
+        publishedAt: undefined,
+        order: getNextDocPageOrder(docPageDocument.sectionId),
+    };
+}
+function isDuplicateRouteDocument(document) {
+    return document.kind === "post" || document.kind === "doc_page";
+}
 function applyRouteDocument(document, options) {
+    const preserveBrowseState = options.preserveBrowseState === true && studio.workspaceMode === "browse";
     state.selectedRoute = options.route;
     state.document = document;
     state.editorValue = editorValueForDocument(document);
@@ -411,10 +463,10 @@ function applyRouteDocument(document, options) {
     studio.previewExcerpt = "";
     studio.reviewDiffs = [];
     studio.validationIssues = [];
-    studio.workspaceMode = "write";
-    studio.workflowState = "draft";
+    studio.workspaceMode = preserveBrowseState ? "browse" : "write";
+    studio.workflowState = preserveBrowseState ? studio.workflowState : "draft";
     studio.statusMessage = options.statusMessage;
-    studio.browsePanelOpen = false;
+    studio.browsePanelOpen = preserveBrowseState ? studio.browsePanelOpen : false;
     studio.metadataPanelOpen = false;
     if (options.persistLocation !== false) {
         window.history.replaceState({}, "", publishingStudioPathForEditorRoute(options.route));
@@ -677,6 +729,7 @@ async function applyPathTarget(target, options) {
         case "browse":
             await loadRoute(target.anchorRoute, {
                 persistLocation: false,
+                preserveBrowseState: true,
             });
             openBrowseSurface(target.surface, {
                 persistLocation: false,
@@ -714,6 +767,7 @@ async function loadDashboardFallback(anchorRoute, options = { persistLocation: t
         "/";
     await loadRoute(fallbackRoute, {
         persistLocation: false,
+        preserveBrowseState: true,
     });
     openBrowseSurface("dashboard", {
         persistLocation: options.persistLocation,
@@ -738,7 +792,7 @@ function tagDraftIdForDocument(document, operation) {
     const slug = slugifyPublishingValue(document.slug) || "tag";
     return `${operation}-tag-${slug}`;
 }
-function presentBlockedStudioEntry(workspace, session, message = "The selected account is not entitled to this workspace.") {
+function presentBlockedStudioEntry(workspace, _session, message = "The selected account is not entitled to this workspace.") {
     state.entries = [];
     state.media = [];
     state.docSections = [];
@@ -926,8 +980,8 @@ function renderSignIn(workspace) {
         ? formatPublishingSessionHintIdentity(hint, providers)
         : "";
     const hintProviderLabel = hint
-        ? providers.find((provider) => provider.id === hint.providerId)?.label ??
-            hint.providerId
+        ? (providers.find((provider) => provider.id === hint.providerId)?.label ??
+            hint.providerId)
         : "";
     const providerMarkup = providers
         .map((provider) => {
@@ -1215,6 +1269,7 @@ async function handleBrowseSurfaceSelection(detail) {
         : target.anchorRoute;
     await loadRoute(anchorRoute, {
         persistLocation: false,
+        preserveBrowseState: true,
     });
     openBrowseSurface(target.surface, {
         persistLocation: true,
@@ -1241,6 +1296,7 @@ async function syncStudioLocationFromWindow() {
             if (!state.document || state.selectedRoute !== anchorRoute) {
                 await loadRoute(anchorRoute, {
                     persistLocation: false,
+                    preserveBrowseState: true,
                 });
             }
             openBrowseSurface(target.surface, {

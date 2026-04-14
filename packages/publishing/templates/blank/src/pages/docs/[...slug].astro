@@ -1,0 +1,45 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+import RichText from "../../components/RichText.astro";
+import {
+  getDocsSections,
+  getNavigation,
+  getSiteSettings
+} from "../../lib/publishing";
+
+export async function getStaticPaths() {
+  const sections = await getDocsSections();
+
+  return sections.flatMap((section) =>
+    section.pages.map((page) => ({
+      params: { slug: page.slug },
+      props: { page }
+    })),
+  );
+}
+
+const { page } = Astro.props;
+const [siteSettings, navigation, sections] = await Promise.all([
+  getSiteSettings(),
+  getNavigation(),
+  getDocsSections()
+]);
+---
+
+<BaseLayout
+  pageTitle={page.title}
+  pageDescription={page.summary}
+  siteSettings={siteSettings}
+  navigation={navigation}
+>
+  <section class="page-section docs-shell">
+    <DocsSidebar sections={sections} currentSlug={page.slug} />
+    <article class="content-card stack-gap docs-article">
+      <p class="eyebrow">{page.section.title}</p>
+      <h1>{page.title}</h1>
+      <p class="lede">{page.summary}</p>
+      <RichText body={page.body} />
+    </article>
+  </section>
+</BaseLayout>

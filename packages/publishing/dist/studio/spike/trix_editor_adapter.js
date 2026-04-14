@@ -5,7 +5,7 @@
  */
 import MarkdownIt from "markdown-it";
 import TurndownService from "turndown";
-import { createPublishingEditorState, } from "../editor_contract.js";
+import { createPublishingEditorState } from "../editor_contract.js";
 const markdownRenderer = new MarkdownIt({
     html: false,
     linkify: true,
@@ -114,13 +114,17 @@ export function createTrixEditorAdapter() {
             let removeChangeListener = null;
             const emitState = () => {
                 options.onStateChange?.(createPublishingEditorState({
-                    value: editor ? getMarkdownValue(editor, hiddenInput.value) : currentValue,
+                    value: editor
+                        ? getMarkdownValue(editor, hiddenInput.value)
+                        : currentValue,
                     commands: trixEditorCommands,
                     readOnly: options.readOnly,
                 }));
             };
             const emitChange = () => {
-                const value = editor ? getMarkdownValue(editor, hiddenInput.value) : currentValue;
+                const value = editor
+                    ? getMarkdownValue(editor, hiddenInput.value)
+                    : currentValue;
                 currentValue = value;
                 options.onChange(value);
                 emitState();
@@ -131,7 +135,9 @@ export function createTrixEditorAdapter() {
             });
             return {
                 getValue() {
-                    return editor ? getMarkdownValue(editor, hiddenInput.value) : currentValue;
+                    return editor
+                        ? getMarkdownValue(editor, hiddenInput.value)
+                        : currentValue;
                 },
                 setValue(value) {
                     currentValue = value;
@@ -147,7 +153,9 @@ export function createTrixEditorAdapter() {
                 },
                 getState() {
                     return createPublishingEditorState({
-                        value: editor ? getMarkdownValue(editor, hiddenInput.value) : currentValue,
+                        value: editor
+                            ? getMarkdownValue(editor, hiddenInput.value)
+                            : currentValue,
                         commands: trixEditorCommands,
                         readOnly: options.readOnly,
                     });

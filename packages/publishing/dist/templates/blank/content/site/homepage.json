@@ -1,0 +1,21 @@
+{
+  "kind": "homepage",
+  "heroEyebrow": "Blank site",
+  "heroTitle": "{{siteTitle}}",
+  "heroBody": "A minimal local-first shell for docs, notes, or a publication. Add structure only when you need it.",
+  "heroMetrics": [],
+  "primaryCta": {
+    "label": "Open docs",
+    "href": "/docs"
+  },
+  "secondaryCta": {
+    "label": "Open blog",
+    "href": "/blog"
+  },
+  "featureBlocks": [],
+  "ctaBlocks": [],
+  "seo": {
+    "title": "{{siteTitle}}",
+    "description": "A blank local-first publishing site for {{siteTitle}}."
+  }
+}

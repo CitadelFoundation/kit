@@ -1,0 +1,15 @@
+{
+  "kind": "site_settings",
+  "title": "{{siteTitle}}",
+  "description": "A blank local-first publishing workspace for {{siteTitle}}.",
+  "language": "en",
+  "footerNotice": "{{siteTitle}} runs from a local-first publishing workspace.",
+  "contactEmail": "hello@example.com",
+  "socialLinks": [
+    {
+      "label": "GitHub",
+      "href": "https://github.com",
+      "external": true
+    }
+  ]
+}

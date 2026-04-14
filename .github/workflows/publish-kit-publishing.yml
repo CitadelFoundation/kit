@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout distribution repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Guard release branch
         shell: bash
@@ -30,14 +30,56 @@ jobs:
               ;;
           esac
 
+      - name: Verify release branch version
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "JSON.parse(require('node:fs').readFileSync('packages/publishing/package.json', 'utf8')).version")"
+          if ! printf '%s\n' "${PACKAGE_VERSION}" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::Prerelease, build-metadata, or otherwise non-stable package versions must remain private-registry only. Public publish requires stable semver X.Y.Z."
+            exit 1
+          fi
+          EXPECTED_BRANCH="release/kit-publishing-${PACKAGE_VERSION}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_BRANCH}" ]; then
+            echo "::error::Checked-out branch ${GITHUB_REF_NAME} does not match ${EXPECTED_BRANCH} from packages/publishing/package.json."
+            exit 1
+          fi
+
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Verify npm 11 toolchain
+        shell: bash
+        run: |
+          npm --version
+          npm --version | grep -E '^11(\.|$)'
 
       - name: Verify existing package
         run: npm view @citadelfoundation/kit-publishing version
+
+      - name: Verify manifest-declared assets
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const manifest = JSON.parse(fs.readFileSync('packages/publishing/package.json', 'utf8'));
+          const files = Array.isArray(manifest.files) ? manifest.files : [];
+          for (const rawEntry of files) {
+            if (typeof rawEntry !== 'string') continue;
+            const entry = rawEntry.trim().replace(/\/+$/, '');
+            if (!entry || entry.startsWith('!') || entry.includes('*') || entry.includes('?')) continue;
+            const normalizedEntry = entry.replace(/^\.?\//, '');
+            if (normalizedEntry === 'dist' || normalizedEntry === 'README.md' || normalizedEntry === 'package.json') continue;
+            const targetPath = path.join('packages/publishing', normalizedEntry);
+            if (!fs.existsSync(targetPath)) {
+              console.error(`::error::manifest.files declares missing public asset ${targetPath}.`);
+              process.exit(1);
+            }
+          }
+          EOF
 
       - name: Verify public distribution tree
         shell: bash
@@ -46,8 +88,13 @@ jobs:
           test -f docs/release-workflow.md
           test -f packages/publishing/package.json
           test -f packages/publishing/README.md
+          test -f packages/publishing/dist/bin.js
+          test -f packages/publishing/dist/catalog.js
           test -f packages/publishing/dist/index.js
           test -f packages/publishing/dist/index.d.ts
+          test -f packages/publishing/templates/blank/kit-publishing.template.json
+          test -f packages/publishing/templates/starter/kit-publishing.template.json
+          test -f packages/publishing/templates/publication/kit-publishing.template.json
 
       - name: Publish package
         working-directory: packages/publishing

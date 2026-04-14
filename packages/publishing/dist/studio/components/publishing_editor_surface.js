@@ -11,12 +11,17 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 import { css, html } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-import { PublishingElement, publishingTheme, } from "../../internal/ui.js";
-import { createPublishingTiptapEditorAdapter, } from "../editor_adapter.js";
+import { keyed } from "lit/directives/keyed.js";
+import { PublishingElement, publishingTheme } from "../../internal/ui.js";
+import "./lexical/editor-toolbar.js";
+import { lexicalCompactToolbarCommands } from "./lexical/editor-toolbar.js";
+import { createMarkdownEditorAdapter, } from "../editor_adapter.js";
+import "./lexical/lexical-editor.js";
 let KitPublishingEditorSurface = class KitPublishingEditorSurface extends PublishingElement {
     constructor() {
         super(...arguments);
-        this.adapter = createPublishingTiptapEditorAdapter();
+        this.adapter = createMarkdownEditorAdapter();
+        this.editorKind = "lexical";
         this.value = "";
         this.placeholder = "Start drafting...";
         this.editorLabel = "Publishing document editor";
@@ -34,6 +39,9 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
             commandStates: {},
         };
         this.showAdapterAnalysis = false;
+        this.mediaAssets = [];
+        this.externalSyncGeneration = 0;
+        this.documentIdentity = "";
         this.insertPaletteOpen = false;
         this.insertQuery = "";
         this.editorHandle = null;
@@ -41,6 +49,14 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         this.linkComposerOpen = false;
         this.linkComposerHref = "";
         this.linkComposerSelection = "";
+        this.handleLexicalChange = (event) => {
+            this.value = event.detail.value;
+            this.editorState = this.lexicalEditor?.editorState ?? this.editorState;
+            this.emitEvent("publishing-change", event.detail);
+        };
+        this.handleLexicalStateChange = (event) => {
+            this.editorState = event.detail.state;
+        };
     }
     static { this.styles = [
         PublishingElement.baseSystemStyles,
@@ -52,19 +68,63 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
 
       .editor-shell {
         display: grid;
-        gap: 0.75rem;
-        min-height: 36rem;
+        gap: 0.9rem;
+        min-height: 34rem;
         padding: 0;
       }
 
       .editor-topbar {
         display: grid;
-        gap: 0.75rem;
+        gap: 0.45rem;
+      }
+
+      .editor-toolbar-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.8rem 1rem;
+        padding: 0.1rem 0 0.4rem;
+        border-bottom: 1px solid var(--kit-editorial-chrome-border);
+      }
+
+      .editor-toolbar-cluster {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.65rem 0.85rem;
+        min-width: 0;
+      }
+
+      .editor-utility-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.38rem 0.68rem;
+        border-radius: var(--kit-radius-full);
+        background: color-mix(
+          in srgb,
+          var(--kit-editorial-chrome-surface) 98%,
+          transparent
+        );
+        color: var(--kit-editorial-muted-text);
+        font-size: var(--kit-font-size-xs);
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .editor-utility-note code {
+        font-family: inherit;
+        font-weight: 700;
       }
 
       .editor-empty-prompt {
         margin: 0;
-        color: color-mix(in srgb, var(--kit-text-secondary) 76%, transparent);
+        color: color-mix(
+          in srgb,
+          var(--kit-editorial-muted-text) 90%,
+          transparent
+        );
         font-size: 1rem;
         line-height: 1.5;
       }
@@ -74,7 +134,8 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         flex-wrap: wrap;
         align-items: center;
         gap: 0.5rem;
-        color: var(--kit-text-secondary);
+        justify-content: flex-end;
+        color: var(--kit-editorial-muted-text);
         font-size: var(--kit-font-size-xs);
         line-height: 1.45;
       }
@@ -92,6 +153,8 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         align-items: center;
         justify-content: space-between;
         gap: 0.7rem 1rem;
+        padding-top: 0.3rem;
+        border-top: 1px solid var(--kit-editorial-chrome-border);
       }
 
       .meta-save-state[data-state="unsaved"] {
@@ -103,46 +166,14 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         color: color-mix(in srgb, var(--kit-text-secondary) 88%, transparent);
       }
 
-      .editor-inline-controls {
-        display: inline-flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.2rem;
-      }
-
-      .editor-inline-button {
-        appearance: none;
-        border: 0;
-        border-radius: var(--kit-radius-md);
-        padding: 0.24rem 0.36rem;
-        color: color-mix(in srgb, var(--kit-text-secondary) 92%, transparent);
-        background: transparent;
-        font: inherit;
-        font-weight: 500;
-        cursor: pointer;
-        transition:
-          color 120ms ease,
-          background 120ms ease;
-      }
-
-      .editor-inline-button:hover:enabled {
-        color: var(--kit-text-primary);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 82%, transparent);
-      }
-
-      .editor-inline-button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-
-      .editor-inline-button[data-active="true"] {
-        color: var(--kit-text-primary);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 92%, transparent);
+      .meta-save-state[data-state="saved"] {
+        color: var(--kit-editorial-muted-text);
       }
 
       .composer-button {
         appearance: none;
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
         border-radius: var(--kit-radius-md);
         padding: 0.4rem 0.65rem;
         color: var(--kit-text-primary);
@@ -156,8 +187,16 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       }
 
       .composer-button:hover:enabled {
-        border-color: color-mix(in srgb, var(--kit-color-primary) 34%, transparent);
-        background: color-mix(in srgb, var(--kit-color-primary) 10%, var(--kit-surface-primary));
+        border-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 34%,
+          transparent
+        );
+        background: color-mix(
+          in srgb,
+          var(--kit-color-primary) 10%,
+          var(--kit-surface-primary)
+        );
       }
 
       .insert-palette {
@@ -165,15 +204,21 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         gap: var(--kit-space-sm);
         padding: var(--kit-space-sm);
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 92%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 92%,
+          transparent
+        );
       }
 
       .insert-palette-search {
         width: 100%;
         padding: 0.7rem 0.8rem;
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         background: var(--kit-surface-primary);
         color: var(--kit-text-primary);
         font: inherit;
@@ -192,7 +237,8 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         text-align: left;
         padding: 0.75rem 0.8rem;
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         background: var(--kit-surface-primary);
         color: var(--kit-text-primary);
         font: inherit;
@@ -200,8 +246,16 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       }
 
       .insert-palette-button:hover {
-        border-color: color-mix(in srgb, var(--kit-color-primary) 32%, transparent);
-        background: color-mix(in srgb, var(--kit-color-primary) 8%, var(--kit-surface-primary));
+        border-color: color-mix(
+          in srgb,
+          var(--kit-color-primary) 32%,
+          transparent
+        );
+        background: color-mix(
+          in srgb,
+          var(--kit-color-primary) 8%,
+          var(--kit-surface-primary)
+        );
       }
 
       .insert-palette-button strong {
@@ -218,8 +272,13 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         gap: 0.75rem;
         padding: 0.9rem;
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 90%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 90%,
+          transparent
+        );
       }
 
       .link-composer-header {
@@ -250,7 +309,8 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         width: 100%;
         padding: 0.72rem 0.8rem;
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
         background: var(--kit-surface-primary);
         color: var(--kit-text-primary);
         font: inherit;
@@ -267,8 +327,13 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         gap: var(--kit-space-sm);
         padding: var(--kit-space-sm);
         border-radius: var(--kit-radius-md);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-secondary) 92%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-secondary) 92%,
+          transparent
+        );
       }
 
       .analysis-summary {
@@ -293,8 +358,13 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         gap: 0.35rem;
         padding: 0.25rem 0.55rem;
         border-radius: var(--kit-radius-full);
-        border: 1px solid color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
-        background: color-mix(in srgb, var(--kit-surface-primary) 92%, transparent);
+        border: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 82%, transparent);
+        background: color-mix(
+          in srgb,
+          var(--kit-surface-primary) 92%,
+          transparent
+        );
         font-size: var(--kit-font-size-xs);
       }
 
@@ -325,19 +395,21 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         background: transparent;
         border: 0;
         border-radius: 0;
-        font:
-          400
-          1.0625rem / 1.647
-          var(--kit-font-family-sans, "IBM Plex Sans", Inter, system-ui, sans-serif);
+        font: 400 1.0625rem / 1.647
+          var(
+            --kit-font-family-sans,
+            "IBM Plex Sans",
+            Inter,
+            system-ui,
+            sans-serif
+          );
         letter-spacing: 0.004em;
         box-shadow: none;
       }
 
-      .editor-shell[data-empty="true"] .editor-host :is(
-          textarea,
-          .publishing-textarea-adapter,
-          trix-editor
-        ) {
+      .editor-shell[data-empty="true"]
+        .editor-host
+        :is(textarea, .publishing-textarea-adapter, trix-editor) {
         min-height: 31rem;
         padding-top: 0;
       }
@@ -350,7 +422,8 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       .editor-host textarea:focus-visible,
       .editor-host trix-editor:focus-visible,
       .editor-host .publishing-rich-editor__content:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--kit-color-primary) 42%, transparent);
+        outline: 2px solid
+          color-mix(in srgb, var(--kit-color-primary) 42%, transparent);
         outline-offset: 2px;
       }
 
@@ -363,7 +436,9 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       }
 
       .editor-shell[data-empty="true"] .editor-host .publishing-rich-editor,
-      .editor-shell[data-empty="true"] .editor-host .publishing-rich-editor__content {
+      .editor-shell[data-empty="true"]
+        .editor-host
+        .publishing-rich-editor__content {
         min-height: 31rem;
         padding-top: 0;
       }
@@ -373,10 +448,14 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         min-height: 24rem;
         padding: 0 0 0.35rem;
         color: var(--kit-text-primary);
-        font:
-          400
-          1.0625rem / 1.647
-          var(--kit-font-family-sans, "IBM Plex Sans", Inter, system-ui, sans-serif);
+        font: 400 1.0625rem / 1.647
+          var(
+            --kit-font-family-sans,
+            "IBM Plex Sans",
+            Inter,
+            system-ui,
+            sans-serif
+          );
         letter-spacing: 0.004em;
       }
 
@@ -411,17 +490,21 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       .editor-host .publishing-rich-editor__content blockquote {
         margin-left: 0;
         padding-left: 1rem;
-        border-left: 3px solid color-mix(in srgb, var(--kit-color-primary) 28%, transparent);
+        border-left: 3px solid
+          color-mix(in srgb, var(--kit-color-primary) 28%, transparent);
         color: color-mix(in srgb, var(--kit-text-primary) 88%, transparent);
       }
 
       .editor-host .publishing-rich-editor__content hr {
         margin: 1.75rem 0;
         border: 0;
-        border-top: 1px solid color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
+        border-top: 1px solid
+          color-mix(in srgb, var(--kit-border-primary) 84%, transparent);
       }
 
-      .editor-host .publishing-rich-editor__content p.is-editor-empty:first-child::before {
+      .editor-host
+        .publishing-rich-editor__content
+        p.is-editor-empty:first-child::before {
         content: attr(data-placeholder);
         color: var(--kit-text-secondary);
         float: left;
@@ -439,33 +522,66 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
       }
 
       @media (max-width: 900px) {
-        .editor-status {
+        .editor-toolbar-row {
           align-items: flex-start;
         }
 
-        .status-row {
-          align-items: flex-start;
+        .editor-meta {
+          justify-content: flex-start;
         }
       }
     `,
     ]; }
     firstUpdated() {
-        this.mountEditor();
+        if (this.editorKind === "adapter") {
+            this.mountEditor();
+        }
     }
     updated(changedProperties) {
-        if (changedProperties.has("adapter") ||
-            changedProperties.has("placeholder") ||
-            changedProperties.has("editorLabel") ||
-            changedProperties.has("editorTestId") ||
-            changedProperties.has("readOnly")) {
-            this.mountEditor();
-            return;
+        if (changedProperties.has("editorKind")) {
+            if (this.editorKind === "adapter") {
+                this.mountEditor();
+            }
+            else {
+                this.editorHandle?.dispose();
+                this.editorHandle = null;
+            }
         }
-        if (changedProperties.has("value") &&
-            this.editorHandle &&
-            this.editorHandle.getValue() !== this.value) {
-            this.editorHandle.setValue(this.value);
-            this.editorState = this.editorHandle.getState();
+        if (this.editorKind === "adapter") {
+            if (changedProperties.has("adapter") ||
+                changedProperties.has("placeholder") ||
+                changedProperties.has("editorLabel") ||
+                changedProperties.has("editorTestId") ||
+                changedProperties.has("readOnly")) {
+                this.mountEditor();
+                return;
+            }
+            if (changedProperties.has("value") &&
+                this.editorHandle &&
+                this.editorHandle.getValue() !== this.value) {
+                this.editorHandle.setValue(this.value);
+                this.editorState = this.editorHandle.getState();
+            }
+        }
+        if (this.editorKind === "lexical") {
+            if (changedProperties.has("value")) {
+                const nextMetrics = {
+                    characters: this.value.length,
+                    lines: this.value.length === 0 ? 1 : this.value.split(/\r?\n/).length,
+                    words: this.value.trim().length === 0
+                        ? 0
+                        : this.value.trim().split(/\s+/).length,
+                };
+                const currentMetrics = this.editorState.metrics;
+                if (currentMetrics.characters !== nextMetrics.characters ||
+                    currentMetrics.lines !== nextMetrics.lines ||
+                    currentMetrics.words !== nextMetrics.words) {
+                    this.editorState = {
+                        ...this.editorState,
+                        metrics: nextMetrics,
+                    };
+                }
+            }
         }
         if (changedProperties.has("insertPaletteOpen") && this.insertPaletteOpen) {
             this.focusInsertPaletteSearch();
@@ -478,45 +594,78 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         }
     }
     renderContent() {
+        const isAdapterMode = this.editorKind === "adapter";
         const insertCommands = this.getFilteredInsertCommands();
-        const toolbarCommands = this.getPrimaryToolbarCommands();
         const hasBody = this.value.trim().length > 0;
-        const saveState = this.readOnly ? "read-only" : this.dirty ? "unsaved" : "saved";
-        const saveStateLabel = saveState === "read-only" ? "Read only" : saveState === "unsaved" ? "Unsaved" : "Saved";
+        const showLexicalUtilityNote = !isAdapterMode && !this.readOnly && !hasBody && !this.dirty;
+        const saveState = this.readOnly
+            ? "read-only"
+            : this.dirty
+                ? "unsaved"
+                : "saved";
+        const saveStateLabel = saveState === "read-only"
+            ? "Read only"
+            : saveState === "unsaved"
+                ? "Unsaved"
+                : "Saved";
         const showSaveState = saveState !== "saved";
+        const lexicalMeta = html `
+      <div class="editor-meta" aria-label="Editor metadata">
+        <span class="meta-item">${this.editorState.metrics.words} words</span>
+        ${showSaveState
+            ? html `
+              <span class="meta-item meta-save-state" data-state=${saveState}>
+                ${saveStateLabel}
+              </span>
+            `
+            : null}
+      </div>
+    `;
         return html `
       <div
         class="editor-shell"
         data-empty=${hasBody ? "false" : "true"}
+        data-editor-kind=${this.editorKind}
         data-publishing-role="editor-surface"
       >
         <div class="editor-topbar">
-          ${!hasBody && !this.readOnly
+          ${isAdapterMode && !hasBody && !this.readOnly
             ? html `<p class="editor-empty-prompt">${this.placeholder}</p>`
             : null}
-          ${this.showAdapterAnalysis
+          ${isAdapterMode && this.showAdapterAnalysis
             ? html `
-                <div class="adapter-analysis" aria-label="Editor engine analysis">
+                <div
+                  class="adapter-analysis"
+                  aria-label="Editor engine analysis"
+                >
                   <div class="analysis-pills">
-                    <span class="analysis-pill" data-verdict=${this.adapter.descriptor.verdict}>
+                    <span
+                      class="analysis-pill"
+                      data-verdict=${this.adapter.descriptor.verdict}
+                    >
                       ${this.adapter.descriptor.label}
                     </span>
                     <span class="analysis-pill">
                       Markdown: ${this.adapter.descriptor.canonicalMarkdown}
                     </span>
                   </div>
-                  <p class="analysis-summary">${this.adapter.descriptor.summary}</p>
+                  <p class="analysis-summary">
+                    ${this.adapter.descriptor.summary}
+                  </p>
                   <ul class="analysis-notes">
                     ${this.adapter.descriptor.notes.map((note) => html `<li class="analysis-note">${note}</li>`)}
                   </ul>
                 </div>
               `
             : null}
-
-          ${this.insertPaletteOpen
+          ${isAdapterMode && this.insertPaletteOpen
             ? html `
-                <div class="insert-palette" aria-label="Publishing insert palette">
+                <div
+                  class="insert-palette"
+                  aria-label="Publishing insert palette"
+                >
                   <input
+                    name="insert-palette-search"
                     class="insert-palette-search"
                     aria-label="Insert palette search"
                     placeholder="Search headings, lists, quotes, code, links, or dividers"
@@ -533,61 +682,69 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
                               type="button"
                             >
                               <strong>${command.label}</strong>
-                              <span>${command.shortcut ?? "Palette command"}</span>
+                              <span
+                                >${command.shortcut ?? "Palette command"}</span
+                              >
                             </button>
                           `)
-                : html `<p class="insert-palette-empty">No insert commands match this search.</p>`}
+                : html `<p class="insert-palette-empty">
+                          No insert commands match this search.
+                        </p>`}
                   </div>
                 </div>
               `
             : null}
-        </div>
-
-        <div class="editor-host" part="editor-host"></div>
-
-        <div class="editor-footer">
-          ${toolbarCommands.length > 0
-            ? html `
-                <div class="editor-inline-controls" aria-label="Editor formatting controls">
-                  ${toolbarCommands.map((command) => {
-                const commandState = this.editorState.commandStates[command.id];
-                const disabled = commandState?.disabled ?? this.readOnly;
-                return html `
-                      <button
-                        class="editor-inline-button"
-                        aria-label=${this.inlineCommandAriaLabel(command)}
-                        aria-pressed=${commandState?.active ? "true" : "false"}
-                        data-active=${commandState?.active ? "true" : "false"}
-                        data-command-id=${command.id}
-                        ?disabled=${disabled}
-                        @click=${() => this.handleCommand(command.id)}
-                        type="button"
-                      >
-                        ${this.inlineCommandLabel(command)}
-                      </button>
-                    `;
-            })}
-                </div>
-              `
+          <div class="editor-toolbar-row">
+            <div class="editor-toolbar-cluster">
+              <kit-lexical-editor-toolbar
+                .commands=${this.getPrimaryToolbarCommands()}
+                .editorState=${this.editorState}
+                .onCommand=${this.handleCommand}
+                .appearance=${isAdapterMode ? "default" : "compact"}
+                .showLabels=${isAdapterMode}
+                .showShortcuts=${isAdapterMode}
+                .toolbarLabel=${isAdapterMode
+            ? "Editor formatting controls"
+            : "Editor controls"}
+              ></kit-lexical-editor-toolbar>
+              ${showLexicalUtilityNote
+            ? html `<span class="editor-utility-note"
+                    >Press <code>/</code> to insert blocks</span
+                  >`
             : null}
-
-          <div class="editor-meta" aria-label="Editor metadata">
-            <span class="meta-item">${this.editorState.metrics.words} words</span>
-            ${showSaveState
-            ? html `
-                  <span class="meta-item meta-save-state" data-state=${saveState}>
-                    ${saveStateLabel}
-                  </span>
-                `
-            : null}
+            </div>
+            ${isAdapterMode ? null : lexicalMeta}
           </div>
         </div>
 
-        ${this.linkComposerOpen
+        ${isAdapterMode
+            ? html `<div class="editor-host" part="editor-host"></div>`
+            : keyed(this.documentIdentity || "__default-document__", html `
+                <kit-lexical-editor
+                  class="lexical-editor"
+                  .value=${this.value}
+                  .placeholder=${this.placeholder}
+                  .editorLabel=${this.editorLabel}
+                  .editorTestId=${this.editorTestId}
+                  .readOnly=${this.readOnly}
+                  .editorState=${this.editorState}
+                  .mediaAssets=${this.mediaAssets}
+                  .externalSyncGeneration=${this.externalSyncGeneration}
+                  @publishing-change=${this.handleLexicalChange}
+                  @publishing-editor-state-change=${this
+                .handleLexicalStateChange}
+                ></kit-lexical-editor>
+              `)}
+        ${isAdapterMode
+            ? html `<div class="editor-footer">${lexicalMeta}</div>`
+            : null}
+        ${isAdapterMode && this.linkComposerOpen
             ? html `
               <div class="link-composer" aria-label="Publishing link composer">
                 <div class="link-composer-header">
-                  <p class="link-composer-title"><strong>Insert link</strong></p>
+                  <p class="link-composer-title">
+                    <strong>Insert link</strong>
+                  </p>
                   <p class="link-composer-copy">
                     ${this.linkComposerSelection.length > 0
                 ? `Selected text: “${this.linkComposerSelection}”`
@@ -597,6 +754,7 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
                 <label class="link-composer-label">
                   URL
                   <input
+                    name="link-url"
                     class="link-composer-input"
                     aria-label="Link URL"
                     placeholder="https://example.org"
@@ -606,10 +764,18 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
                   />
                 </label>
                 <div class="link-composer-actions">
-                  <button class="composer-button" type="button" @click=${this.confirmLinkComposer}>
+                  <button
+                    class="composer-button"
+                    type="button"
+                    @click=${this.confirmLinkComposer}
+                  >
                     Insert link
                   </button>
-                  <button class="composer-button" type="button" @click=${this.cancelLinkComposer}>
+                  <button
+                    class="composer-button"
+                    type="button"
+                    @click=${this.cancelLinkComposer}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -626,6 +792,11 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         this.editorHandle = null;
     }
     handleCommand(commandId) {
+        if (this.editorKind === "lexical") {
+            this.lexicalEditor?.executeCommand(commandId);
+            this.editorState = this.lexicalEditor?.editorState ?? this.editorState;
+            return;
+        }
         this.editorHandle?.executeCommand(commandId);
         this.editorState = this.editorHandle?.getState() ?? this.editorState;
     }
@@ -633,6 +804,10 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         this.handleCommand(commandId);
     }
     focusEditor(target = "end") {
+        if (this.editorKind === "lexical") {
+            this.lexicalEditor?.focus(target);
+            return;
+        }
         this.editorHandle?.focus(target);
     }
     mountEditor() {
@@ -648,7 +823,11 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
             testId: this.editorTestId,
             onChange: (value) => {
                 this.value = value;
-                this.emitEvent("publishing-change", { value });
+                this.emitEvent("publishing-change", {
+                    value,
+                    origin: "user",
+                    editorKind: "adapter",
+                });
             },
             onStateChange: (state) => {
                 this.editorState = state;
@@ -674,30 +853,9 @@ let KitPublishingEditorSurface = class KitPublishingEditorSurface extends Publis
         });
     }
     getPrimaryToolbarCommands() {
-        const preferredOrder = [
-            "bold",
-            "italic",
-            "heading-1",
-            "heading-2",
-            "quote",
-            "link",
-            "code-block",
-        ];
-        return preferredOrder
-            .map((commandId) => this.adapter.commands.find((command) => command.id === commandId))
-            .filter((command) => Boolean(command));
-    }
-    inlineCommandLabel(command) {
-        if (command.id === "code-block") {
-            return "{}";
-        }
-        return command.shortLabel;
-    }
-    inlineCommandAriaLabel(command) {
-        if (command.id === "code-block") {
-            return "Create snippet";
-        }
-        return command.label;
+        return this.editorKind === "lexical"
+            ? lexicalCompactToolbarCommands
+            : this.adapter.commands;
     }
     handleInsertQuery(event) {
         const target = event.currentTarget;
@@ -767,6 +925,9 @@ __decorate([
     property({ attribute: false })
 ], KitPublishingEditorSurface.prototype, "adapter", void 0);
 __decorate([
+    property({ attribute: "editor-kind" })
+], KitPublishingEditorSurface.prototype, "editorKind", void 0);
+__decorate([
     property()
 ], KitPublishingEditorSurface.prototype, "value", void 0);
 __decorate([
@@ -791,6 +952,15 @@ __decorate([
     property({ type: Boolean, attribute: "show-adapter-analysis" })
 ], KitPublishingEditorSurface.prototype, "showAdapterAnalysis", void 0);
 __decorate([
+    property({ attribute: false })
+], KitPublishingEditorSurface.prototype, "mediaAssets", void 0);
+__decorate([
+    property({ attribute: false })
+], KitPublishingEditorSurface.prototype, "externalSyncGeneration", void 0);
+__decorate([
+    property({ attribute: false })
+], KitPublishingEditorSurface.prototype, "documentIdentity", void 0);
+__decorate([
     property({ type: Boolean, attribute: "insert-palette-open", reflect: true })
 ], KitPublishingEditorSurface.prototype, "insertPaletteOpen", void 0);
 __decorate([
@@ -799,6 +969,9 @@ __decorate([
 __decorate([
     query(".editor-host")
 ], KitPublishingEditorSurface.prototype, "editorHost", void 0);
+__decorate([
+    query("kit-lexical-editor")
+], KitPublishingEditorSurface.prototype, "lexicalEditor", void 0);
 __decorate([
     query(".insert-palette-search")
 ], KitPublishingEditorSurface.prototype, "insertPaletteSearch", void 0);

@@ -8,7 +8,9 @@ const publishingSeoSchema = z.object({
     title: z.string().optional(),
     description: z.string().optional(),
 });
-const publishingStatusSchema = z.enum(["draft", "published"]).default("published");
+const publishingStatusSchema = z
+    .enum(["draft", "published"])
+    .default("published");
 const publishingAccessSchema = z
     .enum(["public", "members", "paid_members"])
     .default("public");

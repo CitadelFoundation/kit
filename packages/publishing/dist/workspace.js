@@ -54,7 +54,8 @@ export function createPublicationWorkspace(options) {
         walletAddress: normalizeWalletAddress(defaultPrincipalSource?.walletAddress),
         capabilities: uniqueCapabilities((defaultPrincipalSource?.capabilities ?? capabilitySet.actions).filter((capability) => capabilitySet.actions.includes(capability))),
     };
-    const identityProviders = options.policy?.identityProviders && options.policy.identityProviders.length > 0
+    const identityProviders = options.policy?.identityProviders &&
+        options.policy.identityProviders.length > 0
         ? options.policy.identityProviders
         : options.identityProviders && options.identityProviders.length > 0
             ? options.identityProviders
@@ -83,6 +84,7 @@ export function createPublicationWorkspace(options) {
         deployTargets: options.deployTargets ?? [],
         capabilities: capabilitySet,
         policy,
+        template: options.template,
     };
 }
 /**
@@ -114,7 +116,9 @@ export function createPublicationSession(workspace, options = {}) {
                 (walletAddress
                     ? abbreviateWalletAddress(walletAddress)
                     : policy.defaultPrincipal.displayName),
-            authMethod: options.principal?.authMethod ?? provider.authMethod ?? fallbackAuthMethod,
+            authMethod: options.principal?.authMethod ??
+                provider.authMethod ??
+                fallbackAuthMethod,
             walletAddress,
             capabilities: uniqueCapabilities(principalCapabilities.filter((capability) => providerCapabilities.includes(capability))),
         },
@@ -402,11 +406,11 @@ function humanizeWorkspaceName(value) {
     return normalized.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 }
 function slugifyWorkspaceId(value) {
-    return value
+    return (value
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-+|-+$/gu, "") || "publication-workspace";
+        .replace(/^-+|-+$/gu, "") || "publication-workspace");
 }
 function basenameFromPath(value) {
     const normalized = value.replace(/\\/gu, "/").replace(/\/+$/gu, "");

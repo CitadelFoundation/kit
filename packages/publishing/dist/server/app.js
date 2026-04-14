@@ -14,6 +14,10 @@ const draftSaveSchema = z.object({
     sourcePath: z.string().optional(),
     document: z.record(z.string(), z.unknown()),
 });
+const draftCreateSchema = z.object({
+    draftId: z.string().min(1),
+    document: z.record(z.string(), z.unknown()),
+});
 const previewSchema = z.object({
     document: z.record(z.string(), z.unknown()),
 });
@@ -45,7 +49,11 @@ export async function createPublishingServer(options) {
     });
     const resolveSession = async (request) => {
         if (options.sessionResolver) {
-            return options.sessionResolver({ request, workspace, policy: workspace.policy });
+            return options.sessionResolver({
+                request,
+                workspace,
+                policy: workspace.policy,
+            });
         }
         const providerId = request.headers.get("x-publishing-provider") ?? undefined;
         const walletAddress = request.headers.get("x-publishing-wallet-address") ?? undefined;
@@ -186,7 +194,31 @@ export async function createPublishingServer(options) {
         if ("success" in session && session.success === false) {
             return session;
         }
-        return respond(set, await runtime.value.content().saveDraft(parsed.data.draftId, document.value, parsed.data.sourcePath, parsed.data.operation));
+        return respond(set, await runtime.value
+            .content()
+            .saveDraft(parsed.data.draftId, document.value, parsed.data.sourcePath, parsed.data.operation));
+    })
+        .post("/drafts/create", async ({ body, request, set }) => {
+        const parsed = draftCreateSchema.safeParse(body);
+        if (!parsed.success) {
+            return respondValidationError(set, parsed.error.issues);
+        }
+        const document = validateBodyDocument(parsed.data.document);
+        if (!document.success) {
+            return respond(set, document);
+        }
+        const requiredCapability = document.value.kind === "homepage" ||
+            document.value.kind === "navigation" ||
+            document.value.kind === "site_settings"
+            ? "content:config:write"
+            : "content:draft:write";
+        const session = await resolveAuthorizedSession(set, request, resolveSession, requiredCapability);
+        if ("success" in session && session.success === false) {
+            return session;
+        }
+        return respond(set, await runtime.value
+            .content()
+            .saveDraft(parsed.data.draftId, document.value));
     })
         .post("/preview/render", async ({ body, request, set }) => {
         const session = await resolveAuthorizedSession(set, request, resolveSession, "content:preview:read");

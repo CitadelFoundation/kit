@@ -1,0 +1,27 @@
+{
+  "kind": "navigation",
+  "mainLinks": [
+    {
+      "label": "Home",
+      "href": "/"
+    },
+    {
+      "label": "Docs",
+      "href": "/docs"
+    },
+    {
+      "label": "Blog",
+      "href": "/blog"
+    }
+  ],
+  "footerLinks": [
+    {
+      "label": "Docs",
+      "href": "/docs"
+    },
+    {
+      "label": "Blog",
+      "href": "/blog"
+    }
+  ]
+}

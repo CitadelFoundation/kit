@@ -1,0 +1,19 @@
+---
+title: Deployment Preset
+slug: guides/deployment
+summary: Add the Cloudflare Pages preset when you want deployment scaffolding without changing the local-first model.
+sectionId: guides
+order: 2
+publishedAt: 2026-04-10T00:00:00.000Z
+tags:
+  - docs
+  - publishing
+---
+
+## Preset, not platform lock-in
+
+`--deploy cloudflare-pages` writes the configuration files that help this Astro site land on Cloudflare Pages, but it does not change the underlying publishing workflow.
+
+## Keep the workspace portable
+
+The generated site still builds with plain Astro commands. The deploy preset is there to save setup work, not to make the site dependent on a hosted control plane.

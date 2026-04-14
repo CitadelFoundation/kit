@@ -3,7 +3,10 @@
  *
  * @module @citadelfoundation/kit-publishing/types
  */
+export type { PublishingTemplateBlockKind, PublishingTemplateDefaultContent, PublishingTemplateDefaultHomepageSections, PublishingTemplateDefaultNavigation, PublishingTemplateDefaultSiteMetadata, PublishingTemplateManifest, PublishingTemplatePageKind, PublishingTemplateSectionKind, PublishingTemplateLinkItem, } from "./template-manifest.js";
+export { definePublishingTemplate } from "./template-manifest.js";
 import type { PublishingLicenseAccessMatchMode, PublishingLicenseAccessRequirement, PublishingLicenseResolver, PublishingLicenseScope, PublishingLicenseSessionEvidence, PublishingLicenseSessionState } from "../internal/license.js";
+import type { PublishingTemplateManifest } from "./template-manifest.js";
 /**
  * Supported canonical publishing document kinds.
  */
@@ -162,6 +165,8 @@ export interface PublicationSessionLicenseOptions {
     readonly resolver?: PublishingLicenseResolver;
     readonly evidence?: readonly PublishingLicenseSessionEvidence[];
 }
+export type { PublishingBuiltInTemplateDeployCta, PublicationWorkspaceConfig, PublishingBuiltInTemplateCatalogEntry, PublishingBuiltInTemplateManifest, PublishingBuiltInTemplateId, PublishingDeployPreset, PublishingStarterCatalogEntry, PublishingStarterManifest, } from "./starter-catalog.js";
+export { SUPPORTED_PUBLISHING_DEPLOY_PRESETS } from "./starter-catalog.js";
 export type { PublishingLicenseAccessMatchMode, PublishingLicenseAccessRequirement, PublishingLicenseEntitlementResult, PublishingLicenseResolver, PublishingLicenseScope, PublishingLicenseSessionResult, PublishingLicenseSessionEvidence, PublishingLicenseSessionState, } from "../internal/license.js";
 /**
  * Publication profile used to keep the core package domain agnostic.
@@ -206,6 +211,7 @@ export interface PublicationWorkspace {
     readonly deployTargets: readonly DeployTarget[];
     readonly capabilities: PublicationCapabilitySet;
     readonly policy: PublicationPolicy;
+    readonly template?: PublishingTemplateManifest;
 }
 /**
  * Studio workspace modes keep editor focus separate from publish workflow state.

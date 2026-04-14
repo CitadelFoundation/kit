@@ -6,6 +6,9 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "@citadelfoundation/kit-publishing": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -36,10 +39,16 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
       "default": "./dist/types/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog.d.ts",
+      "import": "./dist/catalog.js",
+      "default": "./dist/catalog.js"
     }
   },
   "files": [
     "dist",
+    "templates",
     "README.md",
     "!dist/**/*.map",
     "!dist/**/tsconfig*.json",
@@ -50,20 +59,27 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --build tsconfig.build.json --force && node ../../scripts/copy_package_assets.mjs",
+    "build": "bun ./scripts/generate_built_in_template_catalog.mjs && rm -rf dist && tsc --build tsconfig.build.json --force && node ../../scripts/copy_package_assets.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "bun test src/content/file_content_repository.test.ts src/server/app.test.ts src/studio/editor_adapter.test.ts src/studio/components/publishing_studio.test.ts src/studio/host/model.test.ts src/workspace.test.ts",
+    "test": "bun test src",
     "export:standalone": "bun run scripts/export_standalone.ts",
     "studio:dev": "bun run src/studio/host/cli.ts",
-    "storybook": "storybook dev -p 6106 --config-dir storybook/.storybook",
-    "build-storybook": "storybook build --config-dir storybook/.storybook",
+    "storybook": "node ../../scripts/run_storybook_cli.mjs dev -p 6106 --config-dir storybook/.storybook",
+    "build-storybook": "node ../../scripts/run_storybook_cli.mjs build --config-dir storybook/.storybook",
     "lint": "tsc --noEmit -p tsconfig.build.json"
   },
   "dependencies": {
-    "@tiptap/core": "^3.4.2",
-    "@tiptap/markdown": "^3.4.2",
-    "@tiptap/starter-kit": "^3.4.2",
+    "@citadelfoundation/kit-ui": "^0.1.0-alpha.1",
+    "@lexical/history": "^0.38.2",
+    "@lexical/html": "^0.38.2",
+    "@lexical/code": "^0.38.2",
+    "@lexical/list": "^0.38.2",
+    "@lexical/link": "^0.38.2",
+    "@lexical/markdown": "^0.38.2",
+    "@lexical/selection": "^0.38.2",
+    "@lexical/rich-text": "^0.38.2",
     "elysia": "^1.4.27",
+    "lexical": "^0.38.2",
     "markdown-it": "^14.1.0",
     "trix": "^2.1.15",
     "turndown": "^7.2.1",
@@ -85,10 +101,20 @@
     "@types/turndown": "^5.0.5",
     "lit": "^3.3.2",
     "storybook": "^10.3.3",
+    "tslib": "^2.8.1",
     "typescript": "^5.9.3"
   },
   "sideEffects": [
+    "./src/studio/components/*.ts",
+    "./src/studio/components/**/*.ts",
+    "./src/studio/host/client.ts",
     "./dist/studio/components/*.js",
+    "./dist/studio/components/**/*.js",
     "./dist/studio/host/client.js"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CitadelFoundation/kit",
+    "directory": "packages/publishing"
+  }
 }

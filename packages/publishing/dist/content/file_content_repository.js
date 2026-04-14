@@ -181,7 +181,10 @@ export class FileContentRepository {
         const draftPath = this.resolveDraftPath(draftId);
         try {
             const source = await readFile(draftPath, "utf8");
-            return { success: true, value: JSON.parse(source) };
+            return {
+                success: true,
+                value: JSON.parse(source),
+            };
         }
         catch (error) {
             return {
@@ -402,7 +405,8 @@ export class FileContentRepository {
                             root: this.paths.root,
                             sourcePath,
                             resolvePath: (entry) => this.resolveCanonicalPath(entry),
-                            matchesIdentity: (entry, next) => slugifyPublishingValue(entry.id) === slugifyPublishingValue(next.id),
+                            matchesIdentity: (entry, next) => slugifyPublishingValue(entry.id) ===
+                                slugifyPublishingValue(next.id),
                         }, document),
                     };
                 case "doc_page":
@@ -468,7 +472,8 @@ export class FileContentRepository {
                         root: this.paths.root,
                         sourcePath,
                         resolvePath: (entry) => this.resolveCanonicalPath(entry),
-                        matchesIdentity: (entry, next) => slugifyPublishingValue(entry.id) === slugifyPublishingValue(next.id),
+                        matchesIdentity: (entry, next) => slugifyPublishingValue(entry.id) ===
+                            slugifyPublishingValue(next.id),
                         compare: compareByNormalizedId,
                     }),
                 };
@@ -561,13 +566,17 @@ export class FileContentRepository {
             ? ""
             : this.serializeCanonicalDocument(draft.document);
         const currentContent = await readTextIfPresent(targetPath);
-        const diffPath = draft.operation === "delete" && draft.sourcePath && draft.sourcePath.length > 0
+        const diffPath = draft.operation === "delete" &&
+            draft.sourcePath &&
+            draft.sourcePath.length > 0
             ? join(this.paths.root, draft.sourcePath)
             : targetPath;
         const diffs = [
             {
                 relativePath: relative(this.paths.root, diffPath),
-                before: diffPath === targetPath ? currentContent : await readTextIfPresent(diffPath),
+                before: diffPath === targetPath
+                    ? currentContent
+                    : await readTextIfPresent(diffPath),
                 after: nextContent,
             },
         ];

@@ -1,0 +1,38 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import RichText from "../../components/RichText.astro";
+import { getNavigation, getPosts, getSiteSettings } from "../../lib/publishing";
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+
+  return posts.map((post) => ({
+    params: { slug: post.slug },
+    props: { post }
+  }));
+}
+
+const { post } = Astro.props;
+const [siteSettings, navigation] = await Promise.all([
+  getSiteSettings(),
+  getNavigation()
+]);
+---
+
+<BaseLayout
+  pageTitle={post.title}
+  pageDescription={post.excerpt}
+  siteSettings={siteSettings}
+  navigation={navigation}
+>
+  <article class="page-section article-shell">
+    <p class="eyebrow">Blog</p>
+    <h1>{post.title}</h1>
+    <p class="lede">{post.excerpt}</p>
+    <div class="card-meta">
+      <span>{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : "Draft"}</span>
+      {post.author?.name && <span>{post.author.name}</span>}
+    </div>
+    <RichText body={post.body} />
+  </article>
+</BaseLayout>

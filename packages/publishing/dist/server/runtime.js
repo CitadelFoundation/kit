@@ -6,7 +6,7 @@
 import { createLogger } from "../internal/logger.js";
 import { createFileContentRepository, createPublishingPaths, } from "../content/file_content_repository.js";
 import { normalizePublishingSlug, slugifyPublishingValue, } from "../content/routes.js";
-import { renderPlaintextPreview, } from "../content/frontmatter.js";
+import { renderPlaintextPreview } from "../content/frontmatter.js";
 import { createPublishingIndexDatabase, } from "./index_database.js";
 const logger = createLogger("kit-publishing-runtime");
 /**

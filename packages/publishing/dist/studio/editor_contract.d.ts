@@ -7,7 +7,15 @@ import type { Disposable } from "../internal/result.js";
 /**
  * Stable command identifiers supported by publishing editor engines.
  */
-export type PublishingEditorCommandId = "undo" | "redo" | "heading-1" | "heading-2" | "heading-3" | "bold" | "italic" | "quote" | "bulleted-list" | "numbered-list" | "code-block" | "link" | "divider";
+export type PublishingEditorCommandId = "undo" | "redo" | "heading-1" | "heading-2" | "heading-3" | "bold" | "italic" | "quote" | "bulleted-list" | "numbered-list" | "code-block" | "link" | "divider" | "image";
+export type PublishingEditorKind = "adapter" | "lexical";
+export type PublishingEditorChangeOrigin = "user" | "external-sync";
+export interface PublishingEditorChangeDetail {
+    readonly value: string;
+    readonly origin?: PublishingEditorChangeOrigin;
+    readonly editorKind?: PublishingEditorKind;
+    readonly syncGeneration?: number;
+}
 /**
  * Toolbar command surfaced by an editor adapter.
  */
@@ -48,7 +56,7 @@ export interface PublishingEditorState {
 export interface PublishingEditorDescriptor {
     readonly id: string;
     readonly label: string;
-    readonly family: "baseline" | "tiptap" | "trix";
+    readonly family: "baseline" | "trix";
     readonly canonicalMarkdown: "native" | "bridge";
     readonly verdict: "baseline" | "candidate" | "reference-only" | "winner";
     readonly summary: string;
