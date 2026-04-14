@@ -1,0 +1,9 @@
+{
+  "id": "starter",
+  "label": "Starter",
+  "summary": "A local-first docs and blog starter with enough seeded content to launch the structure on day one.",
+  "audience": "Teams who need a credible first release with one docs section, one post, and a workflow that stays inspectable.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.1"
+}

@@ -1,0 +1,37 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import PostCard from "../../components/PostCard.astro";
+import { getNavigation, getPosts, getSiteSettings } from "../../lib/publishing";
+
+const [siteSettings, navigation, posts] = await Promise.all([
+  getSiteSettings(),
+  getNavigation(),
+  getPosts()
+]);
+---
+
+<BaseLayout
+  pageTitle="Blog"
+  pageDescription="Writing published from the local studio."
+  siteSettings={siteSettings}
+  navigation={navigation}
+>
+  <section class="hero hero-compact">
+    <p class="eyebrow">Blog</p>
+    <h1>Posts</h1>
+    <p class="lede hero-copy">Entries published from the canonical content tree.</p>
+  </section>
+
+  <section class="page-section">
+    {posts.length === 0 ? (
+      <article class="content-card stack-gap">
+        <h2>No posts yet</h2>
+        <p class="lede">Create your first post in content/posts to populate this archive.</p>
+      </article>
+    ) : (
+      <div class="stack-grid">
+        {posts.map((post) => <PostCard post={post} />)}
+      </div>
+    )}
+  </section>
+</BaseLayout>

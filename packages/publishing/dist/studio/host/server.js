@@ -3,15 +3,53 @@
  *
  * @module @citadelfoundation/kit-publishing/studio/host/server
  */
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { Elysia } from "elysia";
 import { createLogger } from "../../internal/logger.js";
+import { createPublishingPaths } from "../../content/file_content_repository.js";
 import { createPublishingServer, } from "../../server/app.js";
-import { PUBLISHING_STUDIO_BASE_PATH, PUBLISHING_STUDIO_SIGNIN_PATH, } from "./model.js";
+import { PUBLISHING_STUDIO_BASE_PATH, PUBLISHING_STUDIO_MEDIA_PATH_PREFIX, PUBLISHING_STUDIO_SIGNIN_PATH, } from "./model.js";
+import { buildStudioHostClient, createStudioHostClientFreshnessController, } from "./client_bundle_freshness.js";
+import { createPublishingStudioMiddlewareRuntime } from "./middleware_runtime.js";
 const logger = createLogger("kit-publishing-studio-host");
+function isAlreadyStoppedError(error) {
+    return (error instanceof Error &&
+        /isn't running|already stopped|not listening/i.test(error.message));
+}
+/**
+ * Create an Astro middleware for the publishing studio.
+ * This allows the studio to run on the same port as the Astro dev server.
+ *
+ * @example
+ * ```ts
+ * // astro.config.mjs
+ * import { defineConfig } from 'astro/config';
+ * import { createPublishingStudioMiddleware } from '@citadelfoundation/kit-publishing/studio';
+ *
+ * export default defineConfig({
+ *   middleware: createPublishingStudioMiddleware({
+ *     root: process.cwd(),
+ *   }),
+ * });
+ * ```
+ */
+export async function createPublishingStudioMiddleware(options) {
+    const mediaDir = createPublishingPaths(options.root).mediaDir;
+    const studioMiddleware = await createPublishingStudioMiddlewareRuntime({
+        createHostApp: () => createPublishingStudioHostApp(options),
+        createFreshnessController: (outputPath) => createStudioHostClientFreshnessController({
+            outputPath,
+        }),
+    });
+    return async (context, next) => {
+        if ((context.request.method === "GET" || context.request.method === "HEAD") &&
+            context.url.pathname.startsWith(PUBLISHING_STUDIO_MEDIA_PATH_PREFIX)) {
+            return createPublishingStudioMediaResponse(options.root, mediaDir, context.url.pathname);
+        }
+        return studioMiddleware(context, next);
+    };
+}
 /**
  * Start the local publishing studio host for a content workspace.
  */
@@ -47,9 +85,12 @@ export async function createPublishingStudioHostApp(options) {
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/posts`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/posts/*`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/pages`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
+        .get(`${PUBLISHING_STUDIO_BASE_PATH}/tags`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
+        .get(`${PUBLISHING_STUDIO_BASE_PATH}/tags/*`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/editor`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/settings`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
         .get(`${PUBLISHING_STUDIO_BASE_PATH}/settings/*`, () => renderStudioShell(api.value.paths.root, api.value.workspace))
+        .get(`${PUBLISHING_STUDIO_MEDIA_PATH_PREFIX}*`, ({ path }) => createPublishingStudioMediaResponse(api.value.paths.root, api.value.paths.mediaDir, path))
         .get("/studio.js", () => new Response(Bun.file(clientBundlePath), {
         headers: {
             "content-type": "application/javascript; charset=utf-8",
@@ -95,62 +136,39 @@ export async function startPublishingStudioHost(options) {
         root: options.root,
         url,
     });
+    let stopPromise = null;
     return {
         success: true,
         value: {
             root: options.root,
             url,
-            async stop() {
-                server.stop(true);
-                await hostApp.value.dispose();
+            stop() {
+                if (stopPromise) {
+                    return stopPromise;
+                }
+                stopPromise = (async () => {
+                    let stopError = null;
+                    try {
+                        server.stop(true);
+                    }
+                    catch (error) {
+                        if (!isAlreadyStoppedError(error)) {
+                            stopError = error;
+                        }
+                    }
+                    try {
+                        await hostApp.value.dispose();
+                    }
+                    finally {
+                        if (stopError) {
+                            throw stopError;
+                        }
+                    }
+                })();
+                return stopPromise;
             },
         },
     };
-}
-async function buildStudioHostClient(outputPath) {
-    const entrypoint = resolveStudioHostClientEntrypoint();
-    await mkdir(dirname(outputPath), { recursive: true });
-    const build = await Bun.build({
-        entrypoints: [entrypoint],
-        outdir: dirname(outputPath),
-        naming: {
-            entry: "studio.js",
-        },
-        target: "browser",
-        format: "esm",
-        sourcemap: "none",
-        minify: false,
-    });
-    if (!build.success) {
-        return {
-            success: false,
-            error: {
-                tag: "unsupported",
-                reason: build.logs
-                    .map((log) => log.message)
-                    .join("\n"),
-                path: outputPath,
-            },
-        };
-    }
-    if (build.outputs.length === 0) {
-        return {
-            success: false,
-            error: {
-                tag: "unsupported",
-                reason: "Studio host build completed without a browser bundle output.",
-                path: outputPath,
-            },
-        };
-    }
-    return { success: true, value: outputPath };
-}
-function resolveStudioHostClientEntrypoint() {
-    const jsEntrypoint = fileURLToPath(new URL("./client.js", import.meta.url));
-    if (existsSync(jsEntrypoint)) {
-        return jsEntrypoint;
-    }
-    return fileURLToPath(new URL("./client.ts", import.meta.url));
 }
 function renderStudioShell(root, workspace) {
     return new Response(renderPublishingStudioHtml(root, workspace, "studio"), {
@@ -170,6 +188,116 @@ function redirectToSignin(requestUrl) {
             location: signinRedirectTarget(requestUrl),
         },
     });
+}
+function createPublishingStudioMediaResponse(workspaceRoot, mediaRoot, requestPath) {
+    if (isPublishingStudioMediaRootSymlink(workspaceRoot, mediaRoot)) {
+        return new Response("Not found", {
+            status: 404,
+            headers: {
+                "content-type": "text/plain; charset=utf-8",
+            },
+        });
+    }
+    const resolvedPath = resolvePublishingStudioMediaFilePath(mediaRoot, requestPath);
+    if (resolvedPath === null || !existsSync(resolvedPath)) {
+        return new Response("Not found", {
+            status: 404,
+            headers: {
+                "content-type": "text/plain; charset=utf-8",
+            },
+        });
+    }
+    try {
+        const canonicalMediaRoot = realpathSync(mediaRoot);
+        const canonicalResolvedPath = realpathSync(resolvedPath);
+        const relativeResolvedPath = relative(canonicalMediaRoot, canonicalResolvedPath);
+        if (relativeResolvedPath.length === 0 ||
+            relativeResolvedPath === ".." ||
+            relativeResolvedPath.startsWith("..") ||
+            isAbsolute(relativeResolvedPath) ||
+            relativeResolvedPath.split(/[/\\]+/u).includes("..")) {
+            return new Response("Not found", {
+                status: 404,
+                headers: {
+                    "content-type": "text/plain; charset=utf-8",
+                },
+            });
+        }
+        if (!statSync(resolvedPath).isFile()) {
+            return new Response("Not found", {
+                status: 404,
+                headers: {
+                    "content-type": "text/plain; charset=utf-8",
+                },
+            });
+        }
+        return new Response(Bun.file(resolvedPath));
+    }
+    catch (error) {
+        logger.error("Failed to serve publishing studio media asset", {
+            mediaRoot,
+            requestPath,
+            error,
+        });
+        return new Response("Failed to read media asset", {
+            status: 500,
+            headers: {
+                "content-type": "text/plain; charset=utf-8",
+            },
+        });
+    }
+}
+function isPublishingStudioMediaRootSymlink(workspaceRoot, mediaRoot) {
+    try {
+        if (lstatSync(resolve(workspaceRoot)).isSymbolicLink()) {
+            return true;
+        }
+        const relativeMediaRoot = relative(resolve(workspaceRoot), resolve(mediaRoot));
+        if (relativeMediaRoot.length === 0 ||
+            relativeMediaRoot === ".." ||
+            relativeMediaRoot.startsWith("..") ||
+            isAbsolute(relativeMediaRoot)) {
+            return true;
+        }
+        let currentPath = resolve(workspaceRoot);
+        for (const segment of relativeMediaRoot.split(/[/\\]+/u)) {
+            currentPath = join(currentPath, segment);
+            if (lstatSync(currentPath).isSymbolicLink()) {
+                return true;
+            }
+        }
+        return false;
+    }
+    catch {
+        return true;
+    }
+}
+function resolvePublishingStudioMediaFilePath(mediaRoot, requestPath) {
+    const suffix = requestPath.startsWith(PUBLISHING_STUDIO_MEDIA_PATH_PREFIX)
+        ? requestPath.slice(PUBLISHING_STUDIO_MEDIA_PATH_PREFIX.length)
+        : requestPath;
+    let decodedSuffix = suffix;
+    try {
+        decodedSuffix = decodeURIComponent(suffix);
+    }
+    catch {
+        return null;
+    }
+    if (decodedSuffix.length === 0 ||
+        decodedSuffix.startsWith("/") ||
+        decodedSuffix.includes("\\")) {
+        return null;
+    }
+    const candidate = resolve(mediaRoot, decodedSuffix);
+    const relativeCandidate = relative(mediaRoot, candidate);
+    if (relativeCandidate.length === 0 ||
+        relativeCandidate === ".." ||
+        relativeCandidate.startsWith("..") ||
+        isAbsolute(relativeCandidate) ||
+        relativeCandidate.split(/[/\\]+/u).includes("..")) {
+        return null;
+    }
+    return candidate;
 }
 function renderPublishingStudioHtml(root, workspace, routeKind) {
     const authHidden = routeKind === "studio" ? " hidden" : "";

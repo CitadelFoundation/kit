@@ -1,135 +1,206 @@
 # @citadelfoundation/kit-publishing
 
-`@citadelfoundation/kit-publishing` is a Git-native, local-first publishing toolkit for Astro sites, local studio workflows, and static deployment targets such as Cloudflare Pages.
+Git-native, local-first publishing primitives for Astro sites. The package ships a public CLI, three built-in site templates, a local studio host, and Astro-facing content loaders.
 
-## Scope
+**This package runs on [Bun](https://bun.sh).** Node.js is not a supported CLI runtime.
 
-- File-backed content and publish primitives
-- Local-only Elysia API for drafts, preview, publish, and AI assists
-- `@citadelfoundation/kit-ui`-native studio shell, themed Storybook states, and markdown-first editor surface
-- Astro-facing loaders for site, blog, and docs routes
+## Quick start
 
-## Canonical content layout
-
-```text
-content/
-├── site/
-│   ├── site_settings.json
-│   ├── navigation.json
-│   └── homepage.json
-├── posts/
-│   └── hello-world.mdx
-├── docs/
-│   ├── pages/
-│   │   └── getting-started/index.mdx
-│   └── sections/
-│       └── getting-started.json
-└── media/
+```bash
+bunx @citadelfoundation/kit-publishing create my-site --template starter --deploy cloudflare-pages
+cd my-site
+bun install
+bun run studio:dev
 ```
 
-Drafts are kept outside canonical content in `.studio/drafts/`.
+That creates a full Astro site workspace with the publishing content tree, a `publication.config.ts`, and the local studio entrypoint already wired in.
 
-## Entry points
+## CLI
 
+### `create`
+
+Create a new site from a built-in template:
+
+```bash
+bunx @citadelfoundation/kit-publishing create <directory> --template <blank|starter|publication> [--deploy <none|cloudflare-pages>]
+```
+
+Or import a template from a local path, Git repo, or npm package:
+
+```bash
+bunx @citadelfoundation/kit-publishing create <directory> --from <source> [--subdir <path>] [--deploy <none|cloudflare-pages>]
+```
+
+Supported `--from` sources:
+
+- local directory path
+- Git URL or a path ending in `.git`
+- npm package spec prefixed with `npm:`
+
+Examples:
+
+```bash
+bunx @citadelfoundation/kit-publishing create my-site --template publication
+bunx @citadelfoundation/kit-publishing create my-site --from ./my-template
+bunx @citadelfoundation/kit-publishing create my-site --from npm:@scope/my-template
+```
+
+`create` refuses non-empty target directories, infers a package name and site title from the target directory, and writes the optional Cloudflare Pages preset when requested.
+
+### `studio`
+
+Start the local publishing studio host for an existing site:
+
+```bash
+bunx @citadelfoundation/kit-publishing studio --root <directory> [--host <host>] [--port <port>]
+```
+
+The site root must contain `publication.config.ts` with a named `publicationWorkspaceConfig` export.
+
+### `template validate`
+
+Validate a portable template before you import or publish it:
+
+```bash
+bunx @citadelfoundation/kit-publishing template validate <source> [--subdir <path>]
+```
+
+This checks the portable manifest, required workspace files, and dependency shape.
+
+### `--help`
+
+```bash
+bunx @citadelfoundation/kit-publishing --help
+bunx @citadelfoundation/kit-publishing create --help
+bunx @citadelfoundation/kit-publishing studio --help
+bunx @citadelfoundation/kit-publishing template validate --help
+```
+
+## Built-in templates
+
+The package bundles three built-in templates as plain Astro workspaces:
+
+### `blank`
+
+A minimal site with the homepage, docs route, blog route, and the canonical publishing content directories, but no seeded docs or editorial content.
+
+### `starter`
+
+A balanced starting point with one docs section, one docs page, and one sample post.
+
+### `publication`
+
+A more opinionated editorial shape with a richer homepage, multiple docs pages, and a seeded blog.
+
+## Portable template contract
+
+Portable templates use `kit-publishing.template.json` at the template root. Required fields:
+
+- `id`
+- `label`
+- `summary`
+- `audience`
+- `screenshot`
+- `supportedDeployPresets`
+- `kitPublishingVersion`
+
+Portable templates are normal Astro site directories. They must not depend on internal-only `@citadelfoundation/kit-template-*` packages or contain `workspace:` or `file:` refs.
+
+`supportedDeployPresets` must use kit-supported preset ids only and must always include `none` for the local-first path.
+
+## Catalog
+
+The built-in gallery data is exported from:
+
+- `@citadelfoundation/kit-publishing/catalog`
+
+That catalog includes:
+
+- manifest metadata for the built-in templates
+- `createCommand`
+- `runCommand`
+- `deployCtas`
+- inline `screenshotDataUrl`
+
+Consumer sites can render the built-in gallery directly from that export without duplicating template metadata locally.
+
+## Deploy preset
+
+Cloudflare Pages is the only supported alpha preset:
+
+```bash
+bunx @citadelfoundation/kit-publishing create my-site --template starter --deploy cloudflare-pages
+```
+
+The preset writes local deployment scaffolding such as `wrangler.toml`. It does not add hosted onboarding or change the local-first publishing workflow.
+
+## Library usage
+
+Public entry points:
+
+- `@citadelfoundation/kit-publishing`
 - `@citadelfoundation/kit-publishing/content`
 - `@citadelfoundation/kit-publishing/server`
 - `@citadelfoundation/kit-publishing/studio`
 - `@citadelfoundation/kit-publishing/astro`
 - `@citadelfoundation/kit-publishing/types`
+- `@citadelfoundation/kit-publishing/catalog`
 
-## Published package contract
+### Astro loaders
 
-Phase 2 and Phase 3 consumers should install the published npm artifact directly:
+```ts
+import { loadAstroPublishingSnapshot } from "@citadelfoundation/kit-publishing/astro";
 
-```bash
-bun add --exact @citadelfoundation/kit-publishing@0.1.1
+const snapshot = await loadAstroPublishingSnapshot(process.cwd());
+if (!snapshot.success) {
+  throw new Error(snapshot.error.reason);
+}
 ```
 
-The supported downstream contract is the published package plus the approved entry points listed above. Do not use vendored source copies or sibling workspace wiring as a steady-state integration path.
+### Local studio host
 
-## Release lane
+```ts
+import { startPublishingStudioHost } from "@citadelfoundation/kit-publishing/studio";
 
-The first public npm publish stays on the checked-in `0.1.0` manifest baseline and must be bootstrapped once from a clean local checkout on the `release/kit-publishing-0.1.0` branch:
-
-```bash
-CI=true npm publish -w @citadelfoundation/kit-publishing --access public
+const host = await startPublishingStudioHost({ root: process.cwd() });
+if (!host.success) {
+  throw new Error(host.error.reason);
+}
 ```
 
-Immediately after the first publish succeeds, attach the GitHub trusted publisher for subsequent releases:
+### Workspace config type
 
-```bash
-npm trust github @citadelfoundation/kit-publishing --repo CitadelFoundation/kit --file publish-kit-publishing.yml
+```ts
+import type { PublicationWorkspaceConfig } from "@citadelfoundation/kit-publishing";
+
+export const publicationWorkspaceConfig: PublicationWorkspaceConfig = {
+  title: "My Site",
+};
 ```
 
-After `@citadelfoundation/kit-publishing` exists on npm, later releases use the private-source and public-distribution flow:
+The package also supports standalone export and vendored-consumer validation flows. Those exports carry provenance metadata and are intended to remain generated artifacts, not a second long-lived implementation surface.
 
-1. validate and version a release branch in the private `CitadelFoundation/kit-stage` source repo
-2. export a clean public distribution tree
-3. promote generated artifacts to `CitadelFoundation/kit` on `release/kit-publishing-*`
-4. run the generated public-repo `publish-kit-publishing.yml` workflow
+Keep consumer-specific overlays outside the generated package tree, for example:
 
-The steady-state workflow uses npm trusted publishing through GitHub OIDC and must remain registered with npm for `@citadelfoundation/kit-publishing` on `CitadelFoundation/kit`. Local publish remains blocked by `scripts/publish_guard.mjs` outside the one-time bootstrap command above.
-
-## Storybook
-
-The package ships Storybook stories for reusable studio components and workflow states, using the shared `@citadelfoundation/kit-ui` theme decorator patterns instead of a standalone publishing-only preview setup:
-
-```bash
-bun --cwd packages/publishing run storybook
-```
-
-Story ownership is intentionally split:
-
-- `storybook/stories/publishing_studio.stories.ts` owns named Ghost-style shell and workflow baseline states.
-- `storybook/stories/publishing_editor_surface.stories.ts` owns component-support editor surface states.
-- `storybook/stories/publishing_editor_engine_comparison.stories.ts` owns decision-only editor comparison artifacts.
-
-Storybook states are baseline artifacts, not final parity sign-off. For Ghost-style browse, shell,
-overlay, and metadata-drawer parity, keep using the integrated browser host plus the acceptance
-evidence in `.taskmaster/docs/kit-publishing-ghost-acceptance-evidence.md` and
-`.taskmaster/docs/kit-publishing-ghost-source-ownership.md`.
-
-## Local studio host
-
-Start the private studio host against any publishing workspace root:
-
-```bash
-bun --cwd packages/publishing run studio:dev -- --root /absolute/path/to/workspace
-```
-
-The host bundles the browser client on startup, serves the `@citadelfoundation/kit-ui` studio shell, and mounts the embedded Elysia API at `/api`.
-
-The default studio workflow is preview-first and diff-reviewed:
-
-1. edit body and metadata in the local studio
-2. preview the rendered draft
-3. review the canonical diff
-4. confirm publish to write Git-tracked files
-
-## Legacy standalone export
-
-`export:standalone` remains available for internal source-authority debugging only:
-
-```bash
-bun --cwd packages/publishing run export:standalone
-```
-
-The export is written to `packages/publishing/dist/standalone/`, but it is not a supported consumer contract for the Phase 2 release lane. Downstream steady-state integrations should use the published npm package instead.
+- `publication.config.ts`
+- `publication.policy.ts`
+- `content/**`
+- repo-owned boot, test, and CI wiring
 
 ## Typecheck verification
 
 Use the verification command that matches the package context:
 
-- Workspace package gate from the `projects/kit` repo root:
+- Generated or imported site workspace:
 
   ```bash
-  moon run kit-publishing:typecheck
+  bun run check
   ```
 
-- Internal standalone debug bundle gate from the exported package root inside `dist/standalone/`:
+- Standalone exported package copy:
 
   ```bash
   bun run typecheck
   ```
 
-Do not treat `moon run :typecheck` from inside `dist/standalone/` as standalone verification. Because the export may live under another parent workspace, Moon can rebind to that parent workspace and validate unrelated projects instead of the exported package itself.
+Prefer Bun-native verification commands inside generated sites or exported copies so validation stays scoped to the package or site you are checking.

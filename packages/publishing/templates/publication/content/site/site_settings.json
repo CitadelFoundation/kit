@@ -1,0 +1,15 @@
+{
+  "kind": "site_settings",
+  "title": "{{siteTitle}}",
+  "description": "A publication-ready site for {{siteTitle}} with docs, editorial writing, and local-first workflows.",
+  "language": "en",
+  "footerNotice": "{{siteTitle}} publishes from a Git-native local studio workflow.",
+  "contactEmail": "hello@example.com",
+  "socialLinks": [
+    {
+      "label": "GitHub",
+      "href": "https://github.com",
+      "external": true
+    }
+  ]
+}

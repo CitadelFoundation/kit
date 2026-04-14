@@ -1,0 +1,9 @@
+{
+  "id": "publication",
+  "label": "Publication",
+  "summary": "An editorial local-first publication starter with a stronger homepage, richer docs tree, and seeded posts ready for a launch story.",
+  "audience": "Teams launching a content hub, product publication, or documentation brand that needs stronger storytelling from the first commit.",
+  "screenshot": "screenshots/preview.svg",
+  "supportedDeployPresets": ["none", "cloudflare-pages"],
+  "kitPublishingVersion": "0.1.1"
+}

@@ -83,6 +83,12 @@ export const markdownEditorCommands = [
         shortLabel: "—",
         kind: "insert",
     },
+    {
+        id: "image",
+        label: "Image",
+        shortLabel: "Img",
+        kind: "insert",
+    },
 ];
 const markdownEditorDescriptor = {
     id: "markdown-pro",
@@ -356,6 +362,9 @@ function executeMarkdownCommand(editor, commandId) {
             break;
         case "divider":
             insertBlock(editor, "\n\n---\n\n");
+            break;
+        case "image":
+            insertBlock(editor, "\n\n![Describe the image](/content/media/asset.png)\n\n");
             break;
         case "undo":
         case "redo":

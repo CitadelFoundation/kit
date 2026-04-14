@@ -11,6 +11,10 @@ declare const STUDIO_BROWSE_SURFACES: readonly ["dashboard", "posts", "pages", "
  */
 export declare const PUBLISHING_STUDIO_BASE_PATH = "/studio";
 /**
+ * Public browser path prefix for locally staged content/media assets.
+ */
+export declare const PUBLISHING_STUDIO_MEDIA_PATH_PREFIX = "/content/media/";
+/**
  * Sign-in pathname for the standalone publishing host.
  */
 export declare const PUBLISHING_STUDIO_SIGNIN_PATH = "/studio/signin";
@@ -74,6 +78,10 @@ export declare function publishingStudioPathForBrowseSurface(surface: Publishing
  * Build a stable standalone editor URL for a document route.
  */
 export declare function publishingStudioPathForEditorRoute(route: string): string;
+/**
+ * Resolve a browser-safe preview path for a local publishing asset.
+ */
+export declare function resolvePublishingStudioAssetPreviewPath(value: string): string | undefined;
 /**
  * Resolve the publishing studio startup target from a standalone host URL.
  */

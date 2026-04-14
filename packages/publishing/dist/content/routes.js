@@ -7,7 +7,10 @@
  * Normalize a slug into a route-safe relative path.
  */
 export function normalizePublishingSlug(value) {
-    return value.trim().replace(/^\/+|\/+$/g, "").replace(/\/{2,}/g, "/");
+    return value
+        .trim()
+        .replace(/^\/+|\/+$/g, "")
+        .replace(/\/{2,}/g, "/");
 }
 /**
  * Create a stable slug from a human-facing title or phrase.

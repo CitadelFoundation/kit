@@ -1,0 +1,107 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PostCard from "../components/PostCard.astro";
+import {
+  getDocsSections,
+  getHomepage,
+  getLatestPosts,
+  getNavigation,
+  getSiteSettings
+} from "../lib/publishing";
+
+const [siteSettings, navigation, homepage, latestPosts, docsSections] = await Promise.all([
+  getSiteSettings(),
+  getNavigation(),
+  getHomepage(),
+  getLatestPosts(),
+  getDocsSections()
+]);
+---
+
+<BaseLayout
+  pageDescription={homepage.seo?.description ?? homepage.heroBody}
+  siteSettings={siteSettings}
+  navigation={navigation}
+>
+  <section class="hero">
+    <p class="eyebrow">{homepage.heroEyebrow}</p>
+    <h1>{homepage.heroTitle}</h1>
+    <p class="lede hero-copy">{homepage.heroBody}</p>
+    <div class="hero-actions">
+      <a class="button-primary" href={homepage.primaryCta.href}>{homepage.primaryCta.label}</a>
+      {homepage.secondaryCta && (
+        <a class="button-secondary" href={homepage.secondaryCta.href}>{homepage.secondaryCta.label}</a>
+      )}
+    </div>
+    {homepage.heroMetrics.length > 0 && (
+      <dl class="metric-grid">
+        {homepage.heroMetrics.map((metric) => (
+          <div class="metric-card">
+            <dt>{metric.label}</dt>
+            <dd>{metric.value}</dd>
+          </div>
+        ))}
+      </dl>
+    )}
+  </section>
+
+  {homepage.featureBlocks.length > 0 && (
+    <section class="page-section">
+      <div class="section-grid">
+        {homepage.featureBlocks.map((block) => (
+          <article class="content-card stack-gap">
+            {block.eyebrow && <p class="eyebrow">{block.eyebrow}</p>}
+            <h2>{block.title}</h2>
+            <p class="lede">{block.body}</p>
+            {block.bullets.length > 0 && (
+              <ul class="bullet-list">
+                {block.bullets.map((bullet) => <li>{bullet}</li>)}
+              </ul>
+            )}
+            {block.link && <a href={block.link.href}>{block.link.label}</a>}
+          </article>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <section class="page-section section-grid">
+    <article class="content-card stack-gap">
+      <p class="eyebrow">Latest posts</p>
+      <h2>Start publishing on your own schedule.</h2>
+      <p class="lede">
+        {latestPosts.length > 0
+          ? "Your most recent posts show up here automatically."
+          : "Add your first post under content/posts to populate the blog archive."}
+      </p>
+      {latestPosts.length > 0 ? (
+        <div class="stack-grid">
+          {latestPosts.map((post) => <PostCard post={post} />)}
+        </div>
+      ) : (
+        <p>No posts have been published yet.</p>
+      )}
+    </article>
+
+    <article class="content-card stack-gap">
+      <p class="eyebrow">Documentation</p>
+      <h2>Documentation routes stay ready even when you start empty.</h2>
+      <p class="lede">
+        {docsSections.length > 0
+          ? "Docs sections and pages are grouped from the canonical content tree."
+          : "Add section JSON and page markdown files under content/docs to turn docs on."}
+      </p>
+      {docsSections.length > 0 ? (
+        <ul class="docs-link-list">
+          {docsSections.map((section) => (
+            <li>
+              <a href={`/docs/${section.pages[0]?.slug ?? ""}/`}>{section.title}</a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No docs pages are available yet.</p>
+      )}
+    </article>
+  </section>
+</BaseLayout>

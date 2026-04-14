@@ -3,7 +3,7 @@
  *
  * @module @citadelfoundation/kit-publishing/workspace
  */
-import type { DeployTarget, IdentityProvider, PublicationCapability, PublicationCapabilitySet, PublicationPolicy, PublicationProfile, PublicationSession, PublicationSessionLicenseOptions, PublicationWorkspace, SessionPrincipal } from "./types/index.js";
+import type { DeployTarget, IdentityProvider, PublicationCapability, PublicationCapabilitySet, PublicationPolicy, PublicationProfile, PublicationSession, PublicationSessionLicenseOptions, PublicationWorkspace, PublishingTemplateManifest, SessionPrincipal } from "./types/index.js";
 /**
  * Options used to create a resolved publication workspace for the local studio.
  */
@@ -18,7 +18,15 @@ export interface PublicationWorkspaceOptions {
     readonly identityProviders?: readonly IdentityProvider[];
     readonly policy?: Partial<PublicationPolicy>;
     readonly capabilities?: Partial<PublicationCapabilitySet>;
+    readonly template?: PublishingTemplateManifest;
 }
+/**
+ * Public workspace config shape used by generated publication.config.ts files.
+ *
+ * The CLI infers `root` at runtime, so portable templates only need to export
+ * the remaining workspace options.
+ */
+export type PublicationWorkspaceConfig = Omit<PublicationWorkspaceOptions, "root">;
 /**
  * Options used to resolve a request-scoped publication session.
  */

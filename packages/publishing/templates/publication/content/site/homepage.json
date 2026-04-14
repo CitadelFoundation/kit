@@ -1,0 +1,74 @@
+{
+  "kind": "homepage",
+  "heroEyebrow": "Editorial starter",
+  "heroTitle": "Publish {{siteTitle}} with docs, dispatches, and a stronger front page from the first commit.",
+  "heroBody": "The publication template leans into a more narrative homepage, multiple docs routes, and a seeded blog so the studio feels like a working publication immediately.",
+  "heroMetrics": [
+    {
+      "label": "Docs",
+      "value": "Two sections"
+    },
+    {
+      "label": "Posts",
+      "value": "Two seeded entries"
+    },
+    {
+      "label": "Deploy",
+      "value": "Cloudflare ready"
+    }
+  ],
+  "primaryCta": {
+    "label": "Explore docs",
+    "href": "/docs"
+  },
+  "secondaryCta": {
+    "label": "Read the latest post",
+    "href": "/blog"
+  },
+  "featureBlocks": [
+    {
+      "eyebrow": "Editorial frame",
+      "title": "A stronger homepage with more room for narrative and proof.",
+      "body": "Use the seeded content as a reference for how homepage metrics, feature blocks, docs sections, and blog writing can sit together in one local-first publication.",
+      "bullets": [
+        "Homepage, docs, and blog routes",
+        "Canonical content directories",
+        "Local studio host from the same workspace"
+      ]
+    },
+    {
+      "eyebrow": "Publishing workflow",
+      "title": "The content model stays inspectable.",
+      "body": "Everything still resolves from the same canonical tree under content/, which means the prettier surface does not hide the Git-native workflow underneath it.",
+      "bullets": [
+        "Structured docs sections",
+        "Markdown-backed docs and posts",
+        "Optional Cloudflare Pages preset"
+      ]
+    }
+  ],
+  "ctaBlocks": [
+    {
+      "tone": "accent",
+      "title": "Run locally first.",
+      "body": "Use the local studio to edit seeded content before you commit to a visual or editorial direction.",
+      "link": {
+        "label": "Read the docs",
+        "href": "/docs"
+      }
+    },
+    {
+      "tone": "subtle",
+      "title": "Deploy when the publication shape is stable.",
+      "body": "Cloudflare Pages stays an alpha preset layered on top of a normal Astro site.",
+      "link": {
+        "label": "Browse posts",
+        "href": "/blog"
+      }
+    }
+  ],
+  "seo": {
+    "title": "{{siteTitle}}",
+    "description": "A publication-ready local-first site for {{siteTitle}}."
+  }
+}

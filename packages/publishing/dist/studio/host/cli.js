@@ -4,26 +4,46 @@
  * @module @citadelfoundation/kit-publishing/studio/host/cli
  */
 import { startPublishingStudioHost } from "./server.js";
-async function main() {
-    const options = parseArguments(Bun.argv.slice(2));
+export async function runPublishingStudioHostCli(options) {
     const host = await startPublishingStudioHost(options);
     if (!host.success) {
         console.error("[kit-publishing] Failed to start studio host.");
         console.error(host.error.reason);
-        process.exitCode = 1;
-        return;
+        process.exit(1);
     }
     console.log(`[kit-publishing] Studio running at ${host.value.url}`);
     console.log(`[kit-publishing] Content root: ${host.value.root}`);
-    const shutdown = async () => {
-        await host.value.stop();
-        process.exit(0);
-    };
-    process.once("SIGINT", () => {
-        void shutdown();
-    });
-    process.once("SIGTERM", () => {
-        void shutdown();
+    await new Promise((resolve) => {
+        let shutdownPromise = null;
+        const shutdown = () => {
+            if (shutdownPromise) {
+                return shutdownPromise;
+            }
+            process.off("SIGINT", handleSigint);
+            process.off("SIGTERM", handleSigterm);
+            shutdownPromise = (async () => {
+                try {
+                    await host.value.stop();
+                }
+                catch (error) {
+                    console.error("[kit-publishing] Failed to stop studio host cleanly.");
+                    console.error(error instanceof Error ? error.message : String(error));
+                    process.exitCode = 1;
+                }
+                finally {
+                    resolve();
+                }
+            })();
+            return shutdownPromise;
+        };
+        const handleSigint = () => {
+            void shutdown();
+        };
+        const handleSigterm = () => {
+            void shutdown();
+        };
+        process.once("SIGINT", handleSigint);
+        process.once("SIGTERM", handleSigterm);
     });
 }
 function parseArguments(args) {
@@ -58,4 +78,9 @@ function parseArguments(args) {
     }
     return { root, host, port };
 }
-void main();
+async function main() {
+    await runPublishingStudioHostCli(parseArguments(Bun.argv.slice(2)));
+}
+if (import.meta.main) {
+    void main();
+}

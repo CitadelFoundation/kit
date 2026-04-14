@@ -3,4 +3,5 @@
  *
  * @module @citadelfoundation/kit-publishing/types
  */
-export {};
+export { definePublishingTemplate } from "./template-manifest.js";
+export { SUPPORTED_PUBLISHING_DEPLOY_PRESETS } from "./starter-catalog.js";

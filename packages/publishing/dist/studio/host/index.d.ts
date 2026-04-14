@@ -5,3 +5,4 @@
  */
 export * from "./model.js";
 export * from "./server.js";
+export type { PublishingStudioMiddleware, PublishingStudioMiddlewareOptions, } from "./server.js";

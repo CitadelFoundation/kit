@@ -4,16 +4,14 @@
  * @module @citadelfoundation/kit-publishing/studio/components/publishing_editor_surface
  */
 import type { TemplateResult, PropertyValues } from "lit";
+import type { AssetDocument } from "../../types/index.js";
 import { PublishingElement } from "../../internal/ui.js";
-import { type PublishingEditorAdapter, type PublishingEditorCommandId, type PublishingEditorFocusTarget, type PublishingEditorState } from "../editor_adapter.js";
-/**
- * Publishing change event payload.
- */
-export interface PublishingEditorChangeDetail {
-    readonly value: string;
-}
+import "./lexical/editor-toolbar.js";
+import { type PublishingEditorAdapter, type PublishingEditorCommandId, type PublishingEditorKind, type PublishingEditorFocusTarget, type PublishingEditorState } from "../editor_adapter.js";
+import "./lexical/lexical-editor.js";
 export declare class KitPublishingEditorSurface extends PublishingElement {
     adapter: PublishingEditorAdapter;
+    editorKind: PublishingEditorKind;
     value: string;
     placeholder: string;
     editorLabel: string;
@@ -22,9 +20,13 @@ export declare class KitPublishingEditorSurface extends PublishingElement {
     dirty: boolean;
     editorState: PublishingEditorState;
     showAdapterAnalysis: boolean;
+    mediaAssets: readonly AssetDocument[];
+    externalSyncGeneration: number;
+    documentIdentity: string;
     insertPaletteOpen: boolean;
     insertQuery: string;
     private readonly editorHost?;
+    private readonly lexicalEditor?;
     private readonly insertPaletteSearch?;
     private readonly linkComposerInput?;
     private editorHandle;
@@ -43,11 +45,11 @@ export declare class KitPublishingEditorSurface extends PublishingElement {
     private mountEditor;
     private getFilteredInsertCommands;
     private getPrimaryToolbarCommands;
-    private inlineCommandLabel;
-    private inlineCommandAriaLabel;
     private handleInsertQuery;
     private handleInsertPaletteCommand;
     private handleInsertRequest;
+    private readonly handleLexicalChange;
+    private readonly handleLexicalStateChange;
     private handleLinkComposerInput;
     private handleLinkComposerKeydown;
     private confirmLinkComposer;

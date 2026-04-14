@@ -26,6 +26,40 @@ export interface PublishingStudioHostApp {
     dispose(): Promise<void>;
 }
 /**
+ * Astro middleware options for the publishing studio.
+ */
+export interface PublishingStudioMiddlewareOptions {
+    readonly root: string;
+    readonly workspace?: Omit<PublicationWorkspaceOptions, "root">;
+    readonly sessionResolver?: PublishingServerSessionResolver;
+    readonly license?: PublishingServerLicenseOptions;
+}
+/**
+ * Astro-compatible middleware function for integrating publishing studio into Astro dev server.
+ */
+export type PublishingStudioMiddleware = (context: {
+    request: Request;
+    url: URL;
+}, next: () => Promise<Response>) => Promise<Response>;
+/**
+ * Create an Astro middleware for the publishing studio.
+ * This allows the studio to run on the same port as the Astro dev server.
+ *
+ * @example
+ * ```ts
+ * // astro.config.mjs
+ * import { defineConfig } from 'astro/config';
+ * import { createPublishingStudioMiddleware } from '@citadelfoundation/kit-publishing/studio';
+ *
+ * export default defineConfig({
+ *   middleware: createPublishingStudioMiddleware({
+ *     root: process.cwd(),
+ *   }),
+ * });
+ * ```
+ */
+export declare function createPublishingStudioMiddleware(options: PublishingStudioMiddlewareOptions): Promise<PublishingStudioMiddleware>;
+/**
  * Start the local publishing studio host for a content workspace.
  */
 export declare function createPublishingStudioHostApp(options: {

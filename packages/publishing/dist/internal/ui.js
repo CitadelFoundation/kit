@@ -1,7 +1,7 @@
 /**
  * Publishing-owned UI primitives for the standalone studio shell.
  */
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html, nothing, } from "lit";
 export class PublishingElement extends LitElement {
     static { this.baseSystemStyles = css `
     :host {
@@ -20,9 +20,7 @@ export class PublishingElement extends LitElement {
   `; }
     render() {
         return html `
-      <div class="kit-component-root" part="root">
-        ${this.renderContent()}
-      </div>
+      <div class="kit-component-root" part="root">${this.renderContent()}</div>
     `;
     }
     renderContent() {
@@ -54,6 +52,8 @@ export const publishingTheme = css `
 
     --kit-font-family-sans:
       system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --kit-font-family-editor:
+      "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
     --kit-font-family-mono:
       "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
     --kit-font-size-xs: 0.75rem;
@@ -69,5 +69,14 @@ export const publishingTheme = css `
     --kit-space-lg: 1.5rem;
 
     --kit-shadow-sm: 0 12px 24px rgba(15, 23, 42, 0.08);
+    --kit-editorial-measure: 46rem;
+    --kit-editorial-chrome-surface: rgba(252, 252, 253, 0.92);
+    --kit-editorial-chrome-border: rgba(15, 23, 42, 0.12);
+    --kit-editorial-muted-text: rgba(75, 85, 99, 0.92);
+    --kit-editorial-hover-surface: rgba(17, 24, 39, 0.04);
+    --kit-editorial-overlay-surface: rgba(255, 255, 255, 0.96);
+    --kit-editorial-overlay-shadow: 0 24px 64px rgba(15, 23, 42, 0.14);
+    --kit-editorial-muted-border: rgba(15, 23, 42, 0.1);
+    --kit-editorial-focus-ring: 0 0 0 3px rgba(17, 24, 39, 0.08);
   }
 `;

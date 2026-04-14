@@ -4,9 +4,10 @@
  * @module @citadelfoundation/kit-publishing/studio/components/publishing_studio
  */
 import type { PropertyValues, TemplateResult } from "lit";
+import "@citadelfoundation/kit-ui/components/tabs";
 import type { AssetDocument, PublicationSession, PublicationWorkspace, PublishingDiff, PublishingDocsTreeSection, PublishingIndexEntry, PublishingValidationIssue, PublishingWorkspaceMode, TagDocument } from "../../types/index.js";
 import { PublishingElement } from "../../internal/ui.js";
-import { type PublishingEditorAdapter } from "../editor_adapter.js";
+import { type PublishingEditorAdapter, type PublishingEditorKind } from "../editor_adapter.js";
 import { type PublishingWorkflowState } from "../machines/studio_machine.js";
 export type PublishingStudioSiteOpenSource = "rail" | "settings" | "editor";
 export interface PublishingStudioOpenSiteDetail {
@@ -20,6 +21,9 @@ export interface PublishingStudioTransientFeedbackInput {
     readonly type: "success" | "info" | "warning" | "error";
     readonly message: string;
     readonly durationMs?: number;
+}
+export interface PublishingStudioDuplicateRowDetail {
+    readonly route: string;
 }
 type GhostBrowseSurface = "dashboard" | "posts" | "pages" | "site" | "settings" | "tags" | "placeholder";
 type GhostPostFilter = "all" | "draft" | "scheduled" | "published";
@@ -47,6 +51,7 @@ export declare class KitPublishingStudio extends PublishingElement {
     documentSectionId: string;
     selectedRoute: string;
     editorAdapter: PublishingEditorAdapter;
+    editorKind: PublishingEditorKind;
     editorInsertPaletteOpen: boolean;
     contentValue: string;
     previewHtml: string;
@@ -66,6 +71,7 @@ export declare class KitPublishingStudio extends PublishingElement {
     session: PublicationSession | null;
     private readonly editorContent;
     private readonly draftDirty;
+    private editorExternalSyncGeneration;
     private readonly machineState;
     private readonly entryFilter;
     private searchOverlayQuery;
@@ -91,11 +97,17 @@ export declare class KitPublishingStudio extends PublishingElement {
     private suppressReactiveRequest;
     private readonly handleGlobalPointerDown;
     private readonly handleGlobalKeyDown;
+    private readonly toggleWorkspacePanel;
+    private readonly toggleMetadataPanel;
+    private readonly closeInspectorPanels;
+    private readonly toggleFeatureMediaPicker;
     private readonly handlePublishingTagSaved;
     private readonly handlePublishingTagDeleted;
     private readonly editorSurface?;
+    private readonly featureMediaEntry?;
     private readonly searchOverlayInput?;
     private readonly unsubscribers;
+    protected getUpdateComplete(): Promise<boolean>;
     static styles: import("lit").CSSResult[];
     connectedCallback(): void;
     disconnectedCallback(): void;
@@ -114,6 +126,7 @@ export declare class KitPublishingStudio extends PublishingElement {
     private renderTagManagementRow;
     private renderTagEditorSurface;
     private renderCollectionSurface;
+    private renderCollectionTable;
     private renderCollectionEmptyState;
     private renderCollectionFilterChip;
     private renderTagMediaField;
@@ -133,6 +146,7 @@ export declare class KitPublishingStudio extends PublishingElement {
     private renderWorkspacePanel;
     private renderWriteStatusBar;
     private renderWriteSurface;
+    private resetRouteScopedState;
     private renderFeatureMediaEntry;
     private renderStructuredEditor;
     private renderSiteSettingsEditor;
@@ -238,6 +252,11 @@ export declare class KitPublishingStudio extends PublishingElement {
     private surfaceForRoute;
     private browseStateForRoute;
     private normalizeRouteBackedPostsFilter;
+    private getCurrentPostsBucket;
+    private getPostsBucketIndex;
+    private labelForPostBucket;
+    private buildPostBucketTabs;
+    private readonly handlePostBucketTabChange;
     private hasActiveSecondaryFilters;
     private clearSecondaryFilters;
     private buildCollectionEmptyState;

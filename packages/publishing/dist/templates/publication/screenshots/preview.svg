@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="publication-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#efe4dd"/>
+      <stop offset="52%" stop-color="#f8f5f0"/>
+      <stop offset="100%" stop-color="#dfe7f0"/>
+    </linearGradient>
+    <filter id="publication-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#2d2230" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="630" fill="url(#publication-bg)"/>
+  <circle cx="1070" cy="120" r="96" fill="#dfe7f0" opacity="0.88"/>
+  <circle cx="166" cy="506" r="116" fill="#eaded4" opacity="0.8"/>
+
+  <g filter="url(#publication-shadow)">
+    <rect x="72" y="70" width="1056" height="492" rx="30" fill="#fdfbf7"/>
+  </g>
+
+  <rect x="72" y="70" width="1056" height="68" rx="30" fill="#251d28"/>
+  <text x="120" y="113" fill="#f5f1ed" font-family="ui-sans-serif, system-ui, sans-serif" font-size="24" font-weight="700">Publication</text>
+  <text x="1028" y="113" text-anchor="end" fill="#d7cfda" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18">Narrative • Docs • Seeded dispatches</text>
+
+  <rect x="108" y="174" width="610" height="338" rx="28" fill="#fff8f0" stroke="#ebddd1"/>
+  <rect x="140" y="208" width="114" height="28" rx="14" fill="#f0e0d3"/>
+  <text x="197" y="227" text-anchor="middle" fill="#7d553c" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" letter-spacing="1.7">EDITORIAL</text>
+  <text x="140" y="292" fill="#231b26" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700">Lead with a story,</text>
+  <text x="140" y="348" fill="#231b26" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700">then prove the system.</text>
+  <text x="140" y="388" fill="#625a62" font-family="ui-sans-serif, system-ui, sans-serif" font-size="22">Homepage framing, docs depth, and seeded posts are ready from the first commit.</text>
+  <rect x="140" y="428" width="206" height="46" rx="23" fill="#2a2330"/>
+  <text x="243" y="457" text-anchor="middle" fill="#f4f0ec" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700">Create publication</text>
+  <rect x="368" y="428" width="164" height="46" rx="23" fill="#f4ece5" stroke="#e6d8ce"/>
+  <text x="450" y="457" text-anchor="middle" fill="#6d5140" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" font-weight="700">Read docs</text>
+
+  <rect x="754" y="174" width="336" height="338" rx="28" fill="#f8fafc" stroke="#dde4ea"/>
+  <rect x="786" y="206" width="144" height="26" rx="13" fill="#e1e8ef"/>
+  <text x="858" y="224" text-anchor="middle" fill="#42627d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" letter-spacing="1.6">LAUNCH STACK</text>
+  <rect x="786" y="256" width="272" height="94" rx="22" fill="#ffffff" stroke="#e1e6eb"/>
+  <text x="814" y="288" fill="#475463" font-family="ui-sans-serif, system-ui, sans-serif" font-size="16" font-weight="700">Docs sections and dispatches</text>
+  <text x="814" y="316" fill="#6c7580" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15">Two docs sections and seeded stories keep the launch arc visible.</text>
+  <rect x="786" y="374" width="128" height="104" rx="22" fill="#ffffff" stroke="#e1e6eb"/>
+  <rect x="930" y="374" width="128" height="104" rx="22" fill="#ffffff" stroke="#e1e6eb"/>
+  <text x="812" y="408" fill="#56606e" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700">Story tile</text>
+  <text x="956" y="408" fill="#56606e" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700">Docs tile</text>
+  <text x="812" y="434" fill="#808792" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">Narrative hero</text>
+  <text x="956" y="434" fill="#808792" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">Proof path</text>
+</svg>

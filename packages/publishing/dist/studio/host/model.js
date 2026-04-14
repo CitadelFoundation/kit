@@ -21,6 +21,10 @@ const STUDIO_BROWSE_SURFACES = [
  */
 export const PUBLISHING_STUDIO_BASE_PATH = "/studio";
 /**
+ * Public browser path prefix for locally staged content/media assets.
+ */
+export const PUBLISHING_STUDIO_MEDIA_PATH_PREFIX = "/content/media/";
+/**
  * Sign-in pathname for the standalone publishing host.
  */
 export const PUBLISHING_STUDIO_SIGNIN_PATH = "/studio/signin";
@@ -53,6 +57,19 @@ export function publishingStudioPathForEditorRoute(route) {
     const url = new URL(`${PUBLISHING_STUDIO_BASE_PATH}/editor`, "http://127.0.0.1");
     url.searchParams.set("route", route);
     return `${url.pathname}${url.search}`;
+}
+/**
+ * Resolve a browser-safe preview path for a local publishing asset.
+ */
+export function resolvePublishingStudioAssetPreviewPath(value) {
+    const normalized = value.trim();
+    if (normalized.length === 0) {
+        return undefined;
+    }
+    if (/^(?:https?:|data:|blob:|\/\/)/iu.test(normalized)) {
+        return normalized;
+    }
+    return `/${normalized.replace(/^\/+/u, "")}`;
 }
 /**
  * Resolve the publishing studio startup target from a standalone host URL.
@@ -494,10 +511,7 @@ function parseBrowseSurfaceFromPath(path) {
         };
     }
     if (path.startsWith("/posts/")) {
-        const segments = path
-            .slice("/posts/".length)
-            .split("/")
-            .filter(Boolean);
+        const segments = path.slice("/posts/".length).split("/").filter(Boolean);
         const postsBucket = segments.length === 1 && isPublishingStudioPostsBucket(segments[0])
             ? segments[0]
             : DEFAULT_PUBLISHING_STUDIO_POSTS_BUCKET;
@@ -531,7 +545,9 @@ function selectBrowseSurfaceAnchorRoute(surface, entries, postsBucket) {
                 ? entries.find((entry) => entry.kind === "post" &&
                     publishingStudioPostsBucketForEntry(entry) === postsBucket)?.route
                 : undefined;
-            return (bucketRoute ?? entries.find((entry) => entry.kind === "post")?.route ?? null);
+            return (bucketRoute ??
+                entries.find((entry) => entry.kind === "post")?.route ??
+                null);
         }
         case "pages":
             return entries.find((entry) => entry.kind === "doc_page")?.route ?? null;
