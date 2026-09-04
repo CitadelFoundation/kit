@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: [self-hosted, colima-ubuntu-amd64]
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
       id-token: write
